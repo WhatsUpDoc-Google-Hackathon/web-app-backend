@@ -33,6 +33,12 @@ app.add_middleware(
 try:
     from utils.ai_client import VertexClient
 
+    logger.info("Attempting to initialize AI client...")
+    logger.info("AI client configuration:")
+    logger.info(f"  Models config path: {config.MODELS_CONFIG_PATH}")
+    logger.info(f"  Project ID: {config.VERTEX_PROJECT_ID}")
+    logger.info(f"  Default region: {config.VERTEX_REGION}")
+
     ai_client = VertexClient(
         config_path=config.MODELS_CONFIG_PATH,
         project_id=config.VERTEX_PROJECT_ID,
@@ -63,6 +69,7 @@ ai_client.predict(
     model_id="gemma_27b",
     text_prompt="Hello my dear"
 )
+
 # db_client = DBClient()
 # stt_streamer = SpeechToTextStreamer()
 
