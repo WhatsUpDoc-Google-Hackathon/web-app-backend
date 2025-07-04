@@ -33,7 +33,6 @@ class VertexModelConfig:
         
         # Configuration système
         self.system_instruction = config_dict.get("system_instruction", "")
-        self.use_dedicated_endpoint = config_dict.get("use_dedicated_endpoint", True)
         self.enabled = config_dict.get("enabled", True)
 
 class VertexClient:
@@ -286,8 +285,7 @@ class VertexClient:
             
             # Faire la prédiction
             response = endpoint.predict(
-                instances=instances,
-                use_dedicated_endpoint=model_config.use_dedicated_endpoint
+                instances=instances
             )
             
             prediction = response.predictions[0] if response.predictions else None
