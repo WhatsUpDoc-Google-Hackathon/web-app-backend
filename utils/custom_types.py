@@ -1,5 +1,6 @@
 from enum import Enum
-from typing import TypedDict, Optional
+from typing_extensions import TypedDict
+from typing import Optional, List
 
 
 class WebSocketData(TypedDict):
@@ -36,8 +37,8 @@ class Document(TypedDict):
 
 
 class ModelReportRequest(TypedDict):
-    conversation: list[ConversationMessage]
-    documents: Optional[list[Document]]
+    conversation: List[ConversationMessage]
+    documents: Optional[List[Document]]
 
 
 class UploadRequest(TypedDict):
