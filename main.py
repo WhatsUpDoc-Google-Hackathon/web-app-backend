@@ -2,11 +2,14 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 import uuid
 import datetime
+from fastapi.responses import FileResponse
 
-import config
-from utils.ai_client import VertexAIClient
-from utils.stt_client import SpeechToTextStreamer
-from utils.db_client import DBClient
+# from utils.ai_client import VertexAIClient
+# from utils.stt_client import SpeechToTextStreamer
+# from utils.db_client import DBClient
+from utils.custom_types import WebSocketData, MessageSender, ModelResponse
+
+# from utils.redis_client import RedisClient
 
 app = FastAPI()
 app.add_middleware(
@@ -17,89 +20,65 @@ app.add_middleware(
 )
 
 # Initialize clients
-ai_client = VertexAIClient()
-db_client = DBClient()
-stt_streamer = SpeechToTextStreamer()
+# ai_client = VertexAIClient()
+# db_client = DBClient()
+# stt_streamer = SpeechToTextStreamer()
+# redis_client = RedisClient()
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
-    session_id = str(uuid.uuid4())
     user_id = websocket.headers.get("user-id", "anonymous")
+    session_id = websocket.headers.get("session-id", str(uuid.uuid4()))
+    print(f"User ID: {user_id}, Session ID: {session_id}")
     # Create a new session record in DB
-    db_client.create_session(session_id, user_id)
     try:
         while True:
-            data = await websocket.receive_json()
-            # data format: { type: 'text'|'audio', content: text|string(base64) }
-            timestamp = datetime.datetime.utcnow().isoformat()
+            data: WebSocketData = await websocket.receive_json()
+            # timestamp = datetime.datetime.utcnow().isoformat()
 
-            if data["type"] == "audio":
-                # TODO: Implement streaming recognition
-                # transcript = await stt_streamer.transcribe_stream(data['content'])
-                transcript = "[TRANSCRIBED TEXT]"  # placeholder
-                user_message = transcript
-            else:
+            if data["type"] == "text":
                 user_message = data["content"]
+            else:
+                raise ValueError(f"Invalid message type: {data['type']}")
 
             # Save user message to DB
-            db_client.save_message(session_id, user_id, "user", user_message, timestamp)
+            # redis_client.save_message(
+            #     session_id, user_id, MessageSender.USER, user_message
+            # )
 
-            # Send message to AI
-            ai_response = ai_client.chat(user_message)
+            # # Send message to AI
+            # ai_response: ModelResponse = ai_client.chat(user_message)
 
-            # Save AI response to DB
-            db_client.save_message(
-                session_id,
-                user_id,
-                "ai",
-                ai_response,
-                datetime.datetime.utcnow().isoformat(),
-            )
+            # # Save AI response to DB
+            # redis_client.save_message(
+            #     session_id, user_id, MessageSender.IA, ai_response
+            # )
 
             # Send response back to client
-            await websocket.send_json({"type": "ai", "content": ai_response})
+            # await websocket.send_json(ai_response)
+            await websocket.send_json({"type": "text", "content": "Hello, world!"})
 
     except WebSocketDisconnect:
         # On disconnect, trigger final report generation
-        # messages = db_client.fetch_session_messages(session_id)
+        # messages = redis_client.fetch_session_messages(session_id)
         # report = ai_client.generate_report(messages)
         # db_client.save_report(session_id, report)
-        pass
+        print("WebSocket disconnected")
 
 
-# ----------------------- utils/ai_client.py -----------------------
-# from google.cloud import aiplatform
-def ______():
-    pass
+@app.get("/cors")
+async def cors():
+    return FileResponse("cors.json")
 
 
-# TODO: Implement VertexAIClient:
-# - chat(prompt: str) -> str
-# - generate_report(messages: List[Dict]) -> str
-# Use google-cloud-aiplatform or vertexai.preview.language_models
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
-# ----------------------- utils/stt_client.py -----------------------
-# from google.cloud import speech
-def ______():
-    pass
+if __name__ == "__main__":
+    import uvicorn
 
-
-# TODO: Implement SpeechToTextStreamer:
-# - transcribe_stream(audio_chunks: List[bytes]) -> str
-# Use streaming_recognize on audio chunks for low latency
-
-
-# ----------------------- utils/db_client.py -----------------------
-# from google.cloud import firestore
-def ______():
-    pass
-
-
-# TODO: Implement DBClient:
-# - create_session(session_id, user_id)
-# - save_message(session_id, user_id, role, content, timestamp)
-# - fetch_session_messages(session_id) -> List[Dict]
-# - save_report(session_id, report_text)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
