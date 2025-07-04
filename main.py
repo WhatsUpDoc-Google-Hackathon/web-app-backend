@@ -59,9 +59,9 @@ except Exception as e:
     logger.error(f"Failed to connect to Redis: {e}")
     logger.warning("Continuing without Redis - message persistence disabled")
 
-ai_client.predict_multimodal(
-    model_id="gemini_vision",
-    text_prompt="Analyser cette image"
+ai_client.predict(
+    model_id="gemma_27b",
+    text_prompt="Hello my dear"
 )
 # db_client = DBClient()
 # stt_streamer = SpeechToTextStreamer()
