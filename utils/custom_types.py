@@ -38,3 +38,23 @@ class Document(TypedDict):
 class ModelReportRequest(TypedDict):
     conversation: list[ConversationMessage]
     documents: Optional[list[Document]]
+
+
+class UploadRequest(TypedDict):
+    session_id: str
+    user_id: str
+    filename: str
+    content_base64: str
+
+
+class UploadResponse(TypedDict):
+    status: str
+    s3_url: str
+    message: str
+
+
+class DocumentMessage(TypedDict):
+    role: str
+    content: str
+    timestamp: str
+    s3_doc_url: str

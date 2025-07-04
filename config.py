@@ -3,10 +3,11 @@ import os
 
 load_dotenv()
 
-# Add your GCP project and credentials settings here
-GCP_PROJECT_ID = "your-gcp-project-id"
-# Path to your service account JSON
-GOOGLE_APPLICATION_CREDENTIALS = "/path/to/credentials.json"
+# GCP project and credentials settings
+GCP_PROJECT_ID = "gemma-hcls25par-724"
+# GCP Storage bucket name
+GCP_STORAGE_BUCKET = "backend-bucket-whatsupdoc"
+
 # Firestore settings
 db_collection_sessions = "sessions"
 db_collection_messages = "messages"

@@ -1,15 +1,31 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    WebSocket,
+    WebSocketDisconnect,
+    UploadFile,
+    File,
+    HTTPException,
+)
 from fastapi.middleware.cors import CORSMiddleware
 import uuid
 import datetime
 import logging
 import sys
+import base64
 from fastapi.responses import FileResponse
 
 # from utils.ai_client import VertexAIClient
 # from utils.db_client import DBClient
-from utils.custom_types import WebSocketData, MessageSender, ModelResponse
+from utils.custom_types import (
+    WebSocketData,
+    MessageSender,
+    ModelResponse,
+    UploadRequest,
+    UploadResponse,
+    DocumentMessage,
+)
 from utils.redis_client import RedisClient
+from utils.file_handler import FileHandler
 import config
 
 # Configure logging
@@ -31,6 +47,7 @@ app.add_middleware(
 # Initialize clients with error handling
 # ai_client = VertexAIClient()
 # db_client = DBClient()
+file_handler = FileHandler()
 
 redis_client = None
 try:
@@ -133,6 +150,68 @@ async def health():
         f"Health check requested - Redis: {redis_health['status'] if redis_health else 'not_configured'}"
     )
     return health_status
+
+
+@app.post("/upload")
+async def upload(upload_request: UploadRequest) -> UploadResponse:
+    """Upload a document to GCP Storage and save to Redis"""
+    try:
+        # Decode base64 content
+        try:
+            file_content = base64.b64decode(upload_request["content_base64"])
+        except Exception as e:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid base64 content: {str(e)}"
+            )
+
+        # Upload to GCP Storage
+        upload_result = await file_handler.upload_to_gcp_storage(
+            file_data=file_content,
+            filename=upload_request["filename"],
+            session_id=upload_request["session_id"],
+            user_id=upload_request["user_id"],
+        )
+
+        # Create document message for Redis
+        document_message: DocumentMessage = {
+            "role": "user",
+            "content": f"[Document Uploaded: {upload_request['filename']}]",
+            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            "s3_doc_url": upload_result["url"],
+        }
+
+        # Save to Redis if available
+        if redis_client:
+            redis_client.save_message(
+                upload_request["session_id"],
+                upload_request["user_id"],
+                MessageSender.USER,
+                document_message,
+            )
+            logger.info(
+                f"Document message saved to Redis for session {upload_request['session_id']}"
+            )
+
+        # Return response
+        response: UploadResponse = {
+            "status": "success",
+            "s3_url": upload_result["url"],
+            "message": "Document uploaded successfully",
+        }
+
+        logger.info(
+            f"Document {upload_request['filename']} uploaded successfully for user {upload_request['user_id']}"
+        )
+        return response
+
+    except ValueError as e:
+        logger.error(f"Upload validation error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Upload error: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail="Internal server error during upload"
+        )
 
 
 @app.get("/")
