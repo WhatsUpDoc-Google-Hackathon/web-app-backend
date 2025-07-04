@@ -2,8 +2,6 @@ from fastapi import (
     FastAPI,
     WebSocket,
     WebSocketDisconnect,
-    UploadFile,
-    File,
     HTTPException,
 )
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,6 +11,7 @@ import logging
 import sys
 import base64
 from fastapi.responses import FileResponse
+from typing import List, Dict
 
 # from utils.ai_client import VertexAIClient
 # from utils.db_client import DBClient
@@ -22,7 +21,7 @@ from utils.custom_types import (
     ModelResponse,
     UploadRequest,
     UploadResponse,
-    DocumentMessage,
+    ConversationMessage,
 )
 from utils.redis_client import RedisClient
 from utils.file_handler import FileHandler
@@ -65,6 +64,37 @@ except Exception as e:
     logger.warning("Continuing without Redis - message persistence disabled")
 
 
+def build_conversation_context(session_id: str) -> Dict[str, List[ConversationMessage]]:
+    """
+    Build conversation context for AI model from Redis messages
+
+    Args:
+        session_id: Unique session identifier
+
+    Returns:
+        Dict containing conversation array formatted for AI model
+    """
+    if not redis_client:
+        logger.warning("Redis client not available - returning empty conversation")
+        return {"conversation": []}
+
+    try:
+        # Fetch messages from Redis
+        messages = redis_client.fetch_session_messages(session_id)
+
+        # Messages are already in the correct format from Redis:
+        # [{"role": "user/ai", "content": "...", "timestamp": "...", "s3_doc_url": "..."}]
+
+        logger.info(
+            f"Built conversation context with {len(messages)} messages for session {session_id}"
+        )
+        return {"conversation": messages}
+
+    except Exception as e:
+        logger.error(f"Error building conversation context: {e}")
+        return {"conversation": []}
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -89,8 +119,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 session_id, user_id, MessageSender.USER, user_message
             )
 
-            # # Send message to AI
-            # ai_response: ModelResponse = ai_client.chat(user_message)
+            # Build conversation context for AI
+            conversation_context = build_conversation_context(session_id)
+
+            # Send message to AI (with conversation context)
+            # ai_response: ModelResponse = ai_client.chat(user_message, conversation_context)
 
             # Create a mock AI response for testing
             ai_response: ModelResponse = {
@@ -114,10 +147,20 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for user {user_id}, session {session_id}")
         # On disconnect, trigger final report generation
-        messages = redis_client.fetch_session_messages(session_id)
-        transformed_messages = redis_client.format_conversation_messages(messages)
-        print(f"Session {session_id} ended with {len(messages)} messages")
-        # report = ai_client.generate_report(transformed_messages)
+        conversation_context = build_conversation_context(session_id)
+        print(
+            f"Session {session_id} ended with {len(conversation_context['conversation'])} messages"
+        )
+        # report = ai_client.generate_report(conversation_context)
+        # Convert report from Markdown to PDF
+        # report_pdf = convert_markdown_to_pdf(report, "report.pdf")
+        # Upload report to GCP Storage
+        # report_pdf_url = await file_handler.upload_to_gcp_storage(
+        #     file_data=report_pdf,
+        #     filename=f"{session_id}_report.pdf",
+        #     session_id=session_id,
+        #     user_id=user_id,
+        # )
         # db_client.save_report(session_id, report)
         print("WebSocket disconnected")
 
@@ -172,24 +215,39 @@ async def upload(upload_request: UploadRequest) -> UploadResponse:
             user_id=upload_request["user_id"],
         )
 
-        # Create document message for Redis
-        document_message: DocumentMessage = {
-            "role": "user",
-            "content": f"[Document Uploaded: {upload_request['filename']}]",
-            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-            "s3_doc_url": upload_result["url"],
-        }
-
         # Save to Redis if available
         if redis_client:
+            # Build conversation context for AI document analysis
+            conversation_context = build_conversation_context(
+                upload_request["session_id"]
+            )
+
+            # Analyze document with AI
+            # ai_analysis_response: ModelResponse = ai_client.analyze_document(
+            #     document_url=upload_result["url"],
+            #     filename=upload_request["filename"],
+            #     conversation_context=conversation_context
+            # )
+
+            # Create a mock AI analysis response for testing
+            ai_analysis_response: ModelResponse = {
+                "type": "ai",
+                "content": f"I've analyzed the document '{upload_request['filename']}'. This appears to be a document that has been uploaded to the system for review.",
+                "meta": {
+                    "source": "document_analysis",
+                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                },
+            }
+
+            # Save AI analysis response to Redis
             redis_client.save_message(
                 upload_request["session_id"],
                 upload_request["user_id"],
-                MessageSender.USER,
-                document_message,
+                MessageSender.IA,
+                ai_analysis_response,
             )
             logger.info(
-                f"Document message saved to Redis for session {upload_request['session_id']}"
+                f"AI document analysis saved to Redis for session {upload_request['session_id']}"
             )
 
         # Return response

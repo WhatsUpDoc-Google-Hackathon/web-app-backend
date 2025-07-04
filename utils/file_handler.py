@@ -60,7 +60,7 @@ class FileHandler:
             file_id = self.generate_file_id(filename, user_id)
 
             # Create GCP Storage object path with organized structure
-            blob_path = f"{session_id}/{filename}"
+            blob_path = f"{user_id}/{session_id}/{filename}"
 
             # Upload to GCP Storage
             blob = self.gcp_bucket.blob(blob_path)
@@ -76,7 +76,9 @@ class FileHandler:
             blob.patch()
 
             # Generate public URL (Firebase Storage style)
-            public_url = f"https://firebase.storage/bucket/{self.gcp_bucket_name}/{session_id}/{filename}"
+            public_url = (
+                f"https://firebase.storage/bucket/{self.gcp_bucket_name}/{blob_path}"
+            )
 
             return {
                 "file_id": file_id,
