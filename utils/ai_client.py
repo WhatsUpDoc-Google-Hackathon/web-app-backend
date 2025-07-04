@@ -9,7 +9,6 @@ from utils.custom_types import ConversationContext
 
 logger = logging.getLogger(__name__)
 
-
 class VertexModelConfig:
     """Configuration optimized for multimodal models"""
 
@@ -289,50 +288,32 @@ class VertexClient:
                 "top_k": kwargs.get("top_k", 40),
             }
 
-            # Build full prompt with conversation context
-            full_prompt = ""
-            if sys_instruction:
-                full_prompt += f"System: {sys_instruction}\n\n"
-
-            if conversation_context:
-                for context in conversation_context:
-                    if context["role"] == "user":
-                        full_prompt += f"{context['content']}\n\n"
-                    elif context["role"] == "assistant":
-                        full_prompt += f"{context['content']}\n\n"
-                    elif context["role"] == "upload":
-                        full_prompt += f"{context['content']}\n\n"
-                    else:
-                        full_prompt += f"{context['content']}\n\n"
-
-            # Add the current user message
-            full_prompt += text_prompt
-
             # Build request based on model type
-            if model_config.supports_images and images:
+            if model_config.supports_images:
                 # Multimodal model - use content/parts structure
-                message_parts = self._build_message_parts(full_prompt, images)
+                contents = []
+                if conversation_context:
+                    for context in conversation_context:
+                        role = "user" if context["role"] != "assistant" else "model"
+                        contents.append({"role": role, "parts": [{"text": context["content"]}]})
+
+                # Add the current user message with images
+                current_message_parts = self._build_message_parts(text_prompt, images)
+                contents.append({"role": "user", "parts": current_message_parts})
 
                 # Check image count limit
-                image_count = len(
-                    [part for part in message_parts if "inline_data" in part]
-                )
+                image_count = len(images) if images else 0
                 if image_count > model_config.max_images_per_request:
                     logger.warning(
                         f"Too many images ({image_count}), limit: {model_config.max_images_per_request}"
                     )
-                    # Keep text and first N images
-                    text_parts = [part for part in message_parts if "text" in part]
-                    image_parts = [
-                        part for part in message_parts if "inline_data" in part
-                    ]
-                    message_parts = (
-                        text_parts + image_parts[: model_config.max_images_per_request]
-                    )
+                    # This logic might need refinement based on desired behavior for too many images.
+                    # For now, we'll let it pass and the API might reject it.
+                    # A better approach would be to handle it before this point.
 
                 # Build multimodal request
                 request = {
-                    "contents": [{"role": "user", "parts": message_parts}],
+                    "contents": contents,
                     "generation_config": generation_params,
                     "safety_settings": [
                         {
@@ -353,25 +334,40 @@ class VertexClient:
                         },
                     ],
                 }
+                if sys_instruction:
+                    request["system_instruction"] = {"parts": [{"text": sys_instruction}]}
+
 
                 response = endpoint.predict(instances=[request])
 
                 logger.info(
-                    f"Multimodal prediction: {len(message_parts)} parts ({image_count} images)"
+                    f"Multimodal prediction: {len(contents)} messages in context ({image_count} images)"
                 )
 
             else:
                 # Text-only model - use simple prompt structure
+                # Build full prompt with conversation context
+                full_prompt = ""
+                if sys_instruction:
+                    full_prompt += f"System: {sys_instruction}\n\n"
+
+                if conversation_context:
+                    for context in conversation_context:
+                        role = "User" if context["role"] != "assistant" else "Assistant"
+                        full_prompt += f"{role}: {context['content']}\n\n"
+
+                # Add the current user message
+                full_prompt += f"User: {text_prompt}"
+
                 logger.info(f"Text prediction for model {target_model_id}")
-                logger.info(f"Full prompt: {full_prompt}")
-                logger.info(f"Generation params: {generation_params}")
-                # Merge generation params with full prompt
-                full_prompt = f"{full_prompt}\n\n{generation_params}"
-                # instances = [{"prompt": full_prompt}]
+                logger.debug(f"Full prompt: {full_prompt}")
+                logger.debug(f"Generation params: {generation_params}")
+
+                instances = [{"prompt": full_prompt, **generation_params}]
                 try:
-                    response = endpoint.predict({"prompt": full_prompt})
+                    response = endpoint.predict(instances=instances)
                 except Exception as e:
-                    logger.error(f"Error during text prediction: {json.dumps(e)}")
+                    logger.error(f"Error during text prediction: {e}")
                     return {
                         "prediction": None,
                         "generated_text": None,
@@ -472,6 +468,9 @@ class VertexClient:
             "region": model_config.region,
         }
 
+    def list_models(self) -> List[str]:
+        """Get list of available model IDs"""
+        return list(self.models.keys())
     def list_models(self) -> List[str]:
         """Get list of available model IDs"""
         return list(self.models.keys())

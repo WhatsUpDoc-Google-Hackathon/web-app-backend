@@ -266,38 +266,40 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
 
             # Send message to AI if available, else mock
-            # if ai_client:
-            #     # Build conversation context for AI
-            #     conversation_context = build_conversation_context(session_id)
-            #     ctx = format_conversation_context(conversation_context)
-            #     logger.info(f"Conversation context: {len(conversation_context)}")
-            #     ai_result = ai_client.predict(user_message, ctx)
-            #     ai_response: ModelResponse = {
-            #         "type": "text",
-            #         "content": ai_result.get("prediction") if ai_result else "AI error",
-            #         "meta": {
-            #             "source": ai_result.get("model_id", "unknown"),
-            #             "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-            #             "success": (
-            #                 ai_result.get("success", False) if ai_result else False
-            #             ),
-            #         },
-            #     }
-            # else:
-            # Create a mock AI response for testing
-            ai_response: ModelResponse = {
-                "type": "text",
-                "content": f"Echo: {user_message}",
-                "meta": {
-                    "source": "mock_ai",
-                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                },
-            }
+            if ai_client:
+                # Build conversation context for AI
+                conversation_context = build_conversation_context(session_id)
+                ctx = format_conversation_context(conversation_context)
+                logger.info(f"Conversation context: {len(conversation_context)}")
+                ai_result = ai_client.predict(user_message, ctx)
+                
+                ai_response: ModelResponse = {
+                    "type": "text",
+                    "content": ai_result.get("prediction") if ai_result else "AI error",
+                    "meta": {
+                        "source": ai_result.get("model_id", "unknown"),
+                        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                        "success": (
+                            ai_result.get("success", False) if ai_result else False
+                        ),
+                    },
+                }
+            else:
+                # Create a mock AI response for testing
+                ai_response: ModelResponse = {
+                    "type": "text",
+                    "content": f"Echo: {user_message}",
+                    "meta": {
+                        "source": "mock_ai",
+                        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                    },
+                }
 
-            # Save AI response to DB
-            redis_client.save_message(
-                session_id, user_id, MessageSender.IA, ai_response
-            )
+            if redis_client:
+                # Save AI response to DB
+                redis_client.save_message(
+                    session_id, user_id, MessageSender.IA, ai_response
+                )
 
             # Send response back to client
             await websocket.send_json(ai_response)
@@ -332,50 +334,31 @@ async def cors():
 @app.get("/health")
 async def health():
     """Health check endpoint for Cloud Run liveness probe"""
-    redis_health = None
-    if redis_client:
+    try:
         redis_health = redis_client.health_check()
-    ai_health = None
-    if ai_client:
-        try:
-            ai_health = ai_client.health_check()
-        except Exception as e:
+    except Exception as e:
+        redis_health = {"status": "unhealthy", "connected": False, "error": str(e)}
+    try:
+        ai_health = ai_client.health_check()
+    except Exception as e:
             ai_health = {"status": "unhealthy", "connected": False, "error": str(e)}
-    db_health = None
-    if db_client:
+    try:
         db_health = db_client.health_check()
-    else:
-        db_health = {"status": "not_configured", "connected": False}
-    stt_health = None
-    if stt_client:
-        try:
-            stt_health = stt_client.health_check()
-        except Exception as e:
-            stt_health = {"status": "unhealthy", "connected": False, "error": str(e)}
-    else:
-        stt_health = {"status": "not_configured", "connected": False}
+    except Exception as e:
+        db_health = {"status": "unhealthy", "connected": False, "error": str(e)}
+    try:
+        stt_health = stt_client.health_check()
+    except Exception as e:
+        stt_health = {"status": "unhealthy", "connected": False, "error": str(e)}
 
     health_status = {
-        "status": "healthy",
         "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
         "services": {
             "api": "running",
             "database": db_health,
-            "redis": (
-                redis_health
-                if redis_health
-                else {"status": "not_configured", "connected": False}
-            ),
-            "ai": (
-                ai_health
-                if ai_health
-                else {"status": "not_configured", "connected": False}
-            ),
-            "stt": (
-                stt_health
-                if stt_health
-                else {"status": "not_configured", "connected": False}
-            ),
+            "redis": redis_health,
+            "ai": ai_health,
+            "stt": stt_health,
         },
     }
     logger.info(f"Health check requested - {health_status}")
