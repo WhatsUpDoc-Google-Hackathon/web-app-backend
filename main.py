@@ -30,9 +30,19 @@ app.add_middleware(
 )
 
 # Initialize clients with error handling
-# ai_client = VertexAIClient()
-# db_client = DBClient()
-# stt_streamer = SpeechToTextStreamer()
+try:
+    from utils.ai_client import VertexClient
+
+    ai_client = VertexClient(
+        config_path=config.MODELS_CONFIG_PATH,
+        project_id=config.VERTEX_PROJECT_ID,
+        default_region=config.VERTEX_REGION,
+    )
+    logger.info("AI client initialized successfully")
+except Exception as e:
+    ai_client = None
+    logger.error(f"Failed to initialize AI client: {e}")
+    logger.warning("Continuing without AI client - using mock responses")
 
 redis_client = None
 try:
@@ -49,6 +59,12 @@ except Exception as e:
     logger.error(f"Failed to connect to Redis: {e}")
     logger.warning("Continuing without Redis - message persistence disabled")
 
+ai_client.predict_multimodal(
+    model_id="gemini_vision",
+    text_prompt="Analyser cette image"
+)
+# db_client = DBClient()
+# stt_streamer = SpeechToTextStreamer()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -74,18 +90,28 @@ async def websocket_endpoint(websocket: WebSocket):
                 session_id, user_id, MessageSender.USER, user_message
             )
 
-            # # Send message to AI
-            # ai_response: ModelResponse = ai_client.chat(user_message)
-
-            # Create a mock AI response for testing
-            ai_response: ModelResponse = {
-                "type": "text",
-                "content": f"Echo: {user_message}",
-                "meta": {
-                    "source": "mock_ai",
-                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                },
-            }
+            # Send message to AI if available, else mock
+            if ai_client:
+                ai_result = ai_client.predict(user_message)
+                ai_response: ModelResponse = {
+                    "type": "text",
+                    "content": ai_result.get("prediction") if ai_result else "AI error",
+                    "meta": {
+                        "source": "vertex_ai",
+                        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                        "success": ai_result.get("success", False) if ai_result else False,
+                    },
+                }
+            else:
+                # Create a mock AI response for testing
+                ai_response: ModelResponse = {
+                    "type": "text",
+                    "content": f"Echo: {user_message}",
+                    "meta": {
+                        "source": "mock_ai",
+                        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                    },
+                }
 
             # Save AI response to DB
             redis_client.save_message(
@@ -118,6 +144,13 @@ async def health():
     if redis_client:
         redis_health = redis_client.health_check()
 
+    ai_health = None
+    if ai_client:
+        try:
+            ai_health = ai_client.health_check()
+        except Exception as e:
+            ai_health = {"status": "unhealthy", "connected": False, "error": str(e)}
+
     health_status = {
         "status": "healthy",
         "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
@@ -128,10 +161,15 @@ async def health():
                 if redis_health
                 else {"status": "not_configured", "connected": False}
             ),
+            "ai": (
+                ai_health
+                if ai_health
+                else {"status": "not_configured", "connected": False}
+            ),
         },
     }
     logger.info(
-        f"Health check requested - Redis: {redis_health['status'] if redis_health else 'not_configured'}"
+        f"Health check requested - Redis: {redis_health['status'] if redis_health else 'not_configured'}, AI: {ai_health['status'] if ai_health else 'not_configured'}"
     )
     return health_status
 
