@@ -3,10 +3,11 @@ import os
 
 load_dotenv()
 
-# Add your GCP project and credentials settings here
-GCP_PROJECT_ID = "your-gcp-project-id"
-# Path to your service account JSON
-GOOGLE_APPLICATION_CREDENTIALS = "/path/to/credentials.json"
+# GCP project and credentials settings
+GCP_PROJECT_ID = "gemma-hcls25par-724"
+# GCP Storage bucket name
+GCP_STORAGE_BUCKET = "backend-bucket-whatsupdoc"
+
 # Firestore settings
 db_collection_sessions = "sessions"
 db_collection_messages = "messages"
@@ -21,6 +22,13 @@ REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 VERTEX_PROJECT_ID = os.getenv("VERTEX_PROJECT_ID", "")
 VERTEX_REGION = os.getenv("VERTEX_REGION", "")
 MODELS_CONFIG_PATH = os.getenv("MODELS_CONFIG_PATH", "models.config")
+
+# Database Configuration for GCP Cloud SQL
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", 3306)
+DB_NAME = os.getenv("DB_NAME", "patients")
+DB_USER = os.getenv("DB_USER", "root")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
 # File handling settings
 ALLOWED_FILE_TYPES = {
