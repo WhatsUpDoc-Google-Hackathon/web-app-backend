@@ -30,12 +30,12 @@ COPY . .
 # Create necessary directories
 RUN mkdir -p /app/utils
 
-# Expose port 8000 for websocket
-EXPOSE 8000
+# Expose port 8080 for websocket
+EXPOSE 8080
 
 # Health check with more reasonable timing for Cloud Run
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8080/health || exit 1
 
 # Command to run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--log-level", "info"]
