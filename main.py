@@ -65,11 +65,6 @@ except Exception as e:
     logger.error(f"Failed to connect to Redis: {e}")
     logger.warning("Continuing without Redis - message persistence disabled")
 
-logger.error(ai_client.predict(
-    model_id="gemma_27b",
-    text_prompt="Hello my dear"
-))
-
 # db_client = DBClient()
 # stt_streamer = SpeechToTextStreamer()
 
