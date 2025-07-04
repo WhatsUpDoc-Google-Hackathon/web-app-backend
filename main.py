@@ -66,7 +66,7 @@ except Exception as e:
 
 db_client = None
 try:
-    logger.info("Attempting to connect to PostgreSQL database...")
+    logger.info("Attempting to connect to MySQL database...")
     db_client = DBClient()
     logger.info("Database client initialized successfully")
 except Exception as e:
@@ -90,10 +90,10 @@ except Exception as e:
     logger.error(f"Failed to connect to Redis: {e}")
     logger.warning("Continuing without Redis - message persistence disabled")
 
-# db_client = DBClient()
-# stt_streamer = SpeechToTextStreamer()
 
-def build_conversation_context(session_id: str) -> Dict[str, List[ConversationMessage]]:
+def build_conversation_context(
+    session_id: str,
+) -> Dict[str, List[ConversationMessage]]:
     """
     Build conversation context for AI model from Redis messages
 
@@ -108,11 +108,7 @@ def build_conversation_context(session_id: str) -> Dict[str, List[ConversationMe
         return {"conversation": []}
 
     try:
-        # Fetch messages from Redis
         messages = redis_client.fetch_session_messages(session_id)
-
-        # Messages are already in the correct format from Redis:
-        # [{"role": "user/ai", "content": "...", "timestamp": "...", "s3_doc_url": "..."}]
 
         logger.info(
             f"Built conversation context with {len(messages)} messages for session {session_id}"
@@ -150,9 +146,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # Send message to AI if available, else mock
             if ai_client:
-              # Build conversation context for AI
+                # Build conversation context for AI
                 conversation_context = build_conversation_context(session_id)
-
+                logger.info(f"Conversation context: {len(conversation_context)}")
                 ai_result = ai_client.predict(user_message)
                 ai_response: ModelResponse = {
                     "type": "text",
@@ -160,7 +156,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     "meta": {
                         "source": "vertex_ai",
                         "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                        "success": ai_result.get("success", False) if ai_result else False,
+                        "success": (
+                            ai_result.get("success", False) if ai_result else False
+                        ),
                     },
                 }
             else:
