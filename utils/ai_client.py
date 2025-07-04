@@ -196,9 +196,6 @@ class VertexClient:
             system_instruction: Instruction système personnalisée
             **kwargs: Paramètres supplémentaires (max_tokens, temperature, etc.)
         """
-        if not self._validate_model(model_id):
-            return None
-        
         model_config = self.models[model_id]
         endpoint = self.endpoints[model_id]
         

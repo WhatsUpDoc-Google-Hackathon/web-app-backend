@@ -42,6 +42,7 @@ try:
         config_path=config.MODELS_CONFIG_PATH,
         project_id=config.VERTEX_PROJECT_ID,
         default_region=config.VERTEX_REGION,
+        auto_initialize=True,
     )
     logger.info("AI client initialized successfully")
 except Exception as e:
