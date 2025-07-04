@@ -1,34 +1,29 @@
-import psycopg2
-import psycopg2.extras
+import mysql.connector
+from mysql.connector import Error
 import logging
-from typing import List, Dict, Optional, Tuple
-from datetime import datetime
-import sys
+from typing import List, Dict, Optional
 import config
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
 logger = logging.getLogger(__name__)
 
 
 class DBClient:
     def __init__(self):
-        """Initialize database client with PostgreSQL for GCP Cloud SQL"""
+        """Initialize database client with MySQL for GCP Cloud SQL"""
         self.connection_params = self._build_connection_params()
         self.init_database()
 
     def _build_connection_params(self) -> dict:
-        """Build connection parameters for PostgreSQL"""
+        """Build connection parameters for MySQL"""
         params = {
             "host": config.DB_HOST,
             "port": config.DB_PORT,
             "database": config.DB_NAME,
             "user": config.DB_USER,
             "password": config.DB_PASSWORD,
+            "autocommit": False,
+            "use_unicode": True,
+            "charset": "utf8mb4",
         }
 
         # If running on GCP with Cloud SQL, use the connection name for socket connection
@@ -41,11 +36,9 @@ class DBClient:
     def get_connection(self):
         """Get a database connection"""
         try:
-            conn = psycopg2.connect(**self.connection_params)
-            conn.autocommit = False
-            logger.info(f"Connected to database: {config.DB_NAME}")
+            conn = mysql.connector.connect(**self.connection_params)
             return conn
-        except Exception as e:
+        except Error as e:
             logger.error(f"Failed to connect to database: {e}")
             raise
 
@@ -59,10 +52,10 @@ class DBClient:
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS patients (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    age INTEGER NOT NULL,
-                    gender TEXT,
+                    id VARCHAR(50) PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    age INT NOT NULL,
+                    gender VARCHAR(20),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """
@@ -72,10 +65,10 @@ class DBClient:
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS reports (
-                    id TEXT PRIMARY KEY,
-                    patient_id TEXT NOT NULL,
+                    id VARCHAR(50) PRIMARY KEY,
+                    patient_id VARCHAR(50) NOT NULL,
                     summary TEXT,
-                    health_status TEXT NOT NULL,
+                    health_status VARCHAR(50) NOT NULL,
                     report_date DATE NOT NULL,
                     report_url TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -93,7 +86,7 @@ class DBClient:
             cursor.close()
             conn.close()
 
-        except Exception as e:
+        except Error as e:
             logger.error(f"Error initializing database: {e}")
             raise
 
@@ -147,7 +140,7 @@ class DBClient:
 
             conn.commit()
             logger.info("Sample data added to database")
-        except Exception as e:
+        except Error as e:
             logger.error(f"Error adding sample data: {e}")
             conn.rollback()
 
@@ -155,7 +148,7 @@ class DBClient:
         """Get all patients with their latest report for the table view"""
         try:
             conn = self.get_connection()
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor = conn.cursor(dictionary=True)
 
             query = """
                 SELECT 
@@ -180,7 +173,7 @@ class DBClient:
                         ROW_NUMBER() OVER (PARTITION BY patient_id ORDER BY report_date DESC) as rn
                     FROM reports
                 ) r ON p.id = r.patient_id AND r.rn = 1
-                ORDER BY r.report_date DESC NULLS LAST
+                ORDER BY r.report_date DESC
             """
 
             cursor.execute(query)
@@ -191,9 +184,9 @@ class DBClient:
 
             logger.info(f"Fetched {len(rows)} patients with latest reports")
 
-            return [dict(row) for row in rows]
+            return rows
 
-        except Exception as e:
+        except Error as e:
             logger.error(f"Error fetching patients with latest reports: {e}")
             return []
 
@@ -201,7 +194,7 @@ class DBClient:
         """Get patient details by ID"""
         try:
             conn = self.get_connection()
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor = conn.cursor(dictionary=True)
 
             cursor.execute("SELECT * FROM patients WHERE id = %s", (patient_id,))
 
@@ -212,9 +205,9 @@ class DBClient:
 
             logger.info(f"Fetched patient {patient_id}")
 
-            return dict(row) if row else None
+            return row
 
-        except Exception as e:
+        except Error as e:
             logger.error(f"Error fetching patient {patient_id}: {e}")
             return None
 
@@ -222,7 +215,7 @@ class DBClient:
         """Get all reports for a patient ordered by date (for timeline view)"""
         try:
             conn = self.get_connection()
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor = conn.cursor(dictionary=True)
 
             cursor.execute(
                 """
@@ -240,9 +233,9 @@ class DBClient:
             cursor.close()
             conn.close()
 
-            return [dict(row) for row in rows]
+            return rows
 
-        except Exception as e:
+        except Error as e:
             logger.error(f"Error fetching reports for patient {patient_id}: {e}")
             return []
 
@@ -250,7 +243,7 @@ class DBClient:
         """Get specific report by ID"""
         try:
             conn = self.get_connection()
-            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cursor = conn.cursor(dictionary=True)
 
             cursor.execute("SELECT * FROM reports WHERE id = %s", (report_id,))
 
@@ -261,9 +254,9 @@ class DBClient:
             cursor.close()
             conn.close()
 
-            return dict(row) if row else None
+            return row
 
-        except Exception as e:
+        except Error as e:
             logger.error(f"Error fetching report {report_id}: {e}")
             return None
 
@@ -303,10 +296,9 @@ class DBClient:
             cursor.close()
             conn.close()
 
-            logger.info(f"Report {report_id} saved for patient {patient_id}")
             return True
 
-        except Exception as e:
+        except Error as e:
             logger.error(f"Error saving report: {e}")
             return False
 
@@ -331,13 +323,13 @@ class DBClient:
                 "connected": True,
                 "patients_count": patient_count,
                 "reports_count": report_count,
-                "database_type": "postgresql",
+                "database_type": "mysql",
             }
-        except Exception as e:
+        except Error as e:
             logger.error(f"Database health check failed: {e}")
             return {
                 "status": "unhealthy",
                 "connected": False,
                 "error": str(e),
-                "database_type": "postgresql",
+                "database_type": "mysql",
             }
