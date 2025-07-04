@@ -1,3 +1,8 @@
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
 # Add your GCP project and credentials settings here
 GCP_PROJECT_ID = "your-gcp-project-id"
 # Path to your service account JSON
@@ -6,11 +11,11 @@ GOOGLE_APPLICATION_CREDENTIALS = "/path/to/credentials.json"
 db_collection_sessions = "sessions"
 db_collection_messages = "messages"
 
-# S3 Configuration
-AWS_ACCESS_KEY_ID = "your-aws-access-key"
-AWS_SECRET_ACCESS_KEY = "your-aws-secret-key"
-AWS_REGION = "us-east-1"
-S3_BUCKET_NAME = "your-chat-files-bucket"
+# Redis Configuration
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = os.getenv("REDIS_PORT", 6379)
+REDIS_DB = os.getenv("REDIS_DB", 0)
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 
 # File handling settings
 ALLOWED_FILE_TYPES = {
