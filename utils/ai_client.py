@@ -425,9 +425,12 @@ class VertexClient:
             return "images"
         return "unknown"
 
-    def health_check(self) -> bool:
+    def health_check(self) -> Dict[str, Any]:
         """Check if the client is healthy"""
-        return self.connected
+        return {
+            "status": "healthy" if self.connected else "unhealthy",
+            "connected": self.connected,
+        }
 
     def get_model_info(self, model_id: str) -> Optional[Dict[str, Any]]:
         """
