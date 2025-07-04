@@ -7,7 +7,6 @@ import sys
 from fastapi.responses import FileResponse
 
 # from utils.ai_client import VertexAIClient
-# from utils.stt_client import SpeechToTextStreamer
 # from utils.db_client import DBClient
 from utils.custom_types import WebSocketData, MessageSender, ModelResponse
 from utils.redis_client import RedisClient
@@ -133,8 +132,9 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.info(f"WebSocket disconnected for user {user_id}, session {session_id}")
         # On disconnect, trigger final report generation
         messages = redis_client.fetch_session_messages(session_id)
+        transformed_messages = redis_client.format_conversation_messages(messages)
         print(f"Session {session_id} ended with {len(messages)} messages")
-        # report = ai_client.generate_report(messages)
+        # report = ai_client.generate_report(transformed_messages)
         # db_client.save_report(session_id, report)
         print("WebSocket disconnected")
 
