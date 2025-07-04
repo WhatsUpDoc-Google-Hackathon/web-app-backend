@@ -11,7 +11,7 @@ import logging
 import sys
 import base64
 from fastapi.responses import FileResponse
-from typing import List, Dict
+from typing import List, Dict, Any
 
 from utils.db_client import DBClient
 from utils.custom_types import (
@@ -22,10 +22,13 @@ from utils.custom_types import (
     UploadResponse,
     ConversationMessage,
     DocumentMessage,
+    AudioMessage,
+    AudioTranscriptionResponse,
 )
 from utils.redis_client import RedisClient
 from utils.file_handler import FileHandler
 from utils.context_builder import format_conversation_context
+from utils.stt_client import STTClient
 import config
 
 # Configure logging
@@ -91,6 +94,19 @@ except Exception as e:
     logger.error(f"Failed to connect to Redis: {e}")
     logger.warning("Continuing without Redis - message persistence disabled")
 
+stt_client = None
+try:
+    logger.info("Attempting to initialize Speech-to-Text client...")
+    stt_client = STTClient(
+        project_id=config.GCP_PROJECT_ID,
+        language_code="en-US",
+        auto_initialize=True,
+    )
+    logger.info("Speech-to-Text client initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to initialize Speech-to-Text client: {e}")
+    logger.warning("Continuing without STT - audio transcription disabled")
+
 
 def build_conversation_context(
     session_id: str,
@@ -132,46 +148,151 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data: WebSocketData = await websocket.receive_json()
-            logger.info(f"Received message from {user_id}: {data['type']}")
-
-            if data["type"] == "text":
-                user_message = data["content"]
-            else:
-                raise ValueError(f"Invalid message type: {data['type']}")
-
-            # Save user message to DB
-            redis_client.save_message(
-                session_id, user_id, MessageSender.USER, user_message
+            logger.info(
+                f"Received message from {user_id}: role={data.get('role')}, has_content={bool(data.get('content'))}, has_audio={bool(data.get('audio'))}"
             )
 
-            # Send message to AI if available, else mock
-            if ai_client:
-                # Build conversation context for AI
-                conversation_context = build_conversation_context(session_id)
-                ctx = format_conversation_context(conversation_context)
-                logger.info(f"Conversation context: {len(conversation_context)}")
-                ai_result = ai_client.predict(user_message, ctx)
-                ai_response: ModelResponse = {
-                    "type": "text",
-                    "content": ai_result.get("prediction") if ai_result else "AI error",
-                    "meta": {
-                        "source": ai_result.get("model_id", "unknown"),
+            # Validate message format
+            has_content = (
+                data.get("content") is not None and data.get("content").strip()
+            )
+            has_audio = data.get("audio") is not None and data.get("audio").strip()
+
+            # Handle text message
+            if has_content and not has_audio:
+                user_message = data["content"]
+                # Save user message to Redis
+                if redis_client:
+                    redis_client.save_message(
+                        session_id, user_id, MessageSender.USER, user_message
+                    )
+            # Handle audio message
+            elif has_audio and not has_content:
+                # Handle audio transcription
+                if not stt_client:
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "content": "Speech-to-Text service not available",
+                            "meta": {
+                                "source": "server",
+                                "timestamp": datetime.datetime.utcnow().isoformat()
+                                + "Z",
+                            },
+                        }
+                    )
+                    continue
+
+                # Transcribe audio - default to webm for browser recordings
+                audio_format = data.get("audio_format", "webm")
+                language_code = data.get("language_code", "en-US")
+
+                transcription_result = stt_client.transcribe_base64_audio(
+                    base64_audio=data["audio"],
+                    audio_format=audio_format,
+                    language_code=language_code,
+                )
+
+                if not transcription_result["success"]:
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "content": f"Transcription failed: {transcription_result.get('error', 'Unknown error')}",
+                            "meta": {
+                                "source": "stt",
+                                "timestamp": datetime.datetime.utcnow().isoformat()
+                                + "Z",
+                            },
+                        }
+                    )
+                    continue
+
+                # Get the best transcription
+                transcriptions = transcription_result.get("transcriptions", [])
+                if not transcriptions:
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "content": "No transcription results",
+                            "meta": {
+                                "source": "stt",
+                                "timestamp": datetime.datetime.utcnow().isoformat()
+                                + "Z",
+                            },
+                        }
+                    )
+                    continue
+
+                best_transcription = transcriptions[0]
+                user_message = best_transcription["transcript"]
+                confidence = best_transcription["confidence"]
+
+                # Save audio message to Redis
+                if redis_client:
+                    audio_msg: AudioMessage = {
+                        "role": "user",
+                        "content": user_message,
                         "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                        "success": (
-                            ai_result.get("success", False) if ai_result else False
-                        ),
-                    },
-                }
+                        "audio_format": audio_format,
+                        "language_code": language_code,
+                        "transcription_confidence": confidence,
+                    }
+                    redis_client.save_message(
+                        session_id, user_id, MessageSender.AUDIO, audio_msg
+                    )
+
+                # Send transcription result back to client
+                await websocket.send_json(
+                    {
+                        "type": "transcription",
+                        "content": user_message,
+                        "meta": {
+                            "source": "stt",
+                            "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                            "confidence": confidence,
+                            "audio_format": audio_format,
+                            "language_code": language_code,
+                        },
+                    }
+                )
+
+            elif has_content and has_audio:
+                raise ValueError(
+                    "Invalid message format: cannot have both 'content' and 'audio' in the same message"
+                )
             else:
-                # Create a mock AI response for testing
-                ai_response: ModelResponse = {
-                    "type": "text",
-                    "content": f"Echo: {user_message}",
-                    "meta": {
-                        "source": "mock_ai",
-                        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                    },
-                }
+                raise ValueError(
+                    "Invalid message format: must have either 'content' (text) or 'audio' (base64 encoded)"
+                )
+
+            # Send message to AI if available, else mock
+            # if ai_client:
+            #     # Build conversation context for AI
+            #     conversation_context = build_conversation_context(session_id)
+            #     ctx = format_conversation_context(conversation_context)
+            #     logger.info(f"Conversation context: {len(conversation_context)}")
+            #     ai_result = ai_client.predict(user_message, ctx)
+            #     ai_response: ModelResponse = {
+            #         "type": "text",
+            #         "content": ai_result.get("prediction") if ai_result else "AI error",
+            #         "meta": {
+            #             "source": ai_result.get("model_id", "unknown"),
+            #             "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+            #             "success": (
+            #                 ai_result.get("success", False) if ai_result else False
+            #             ),
+            #         },
+            #     }
+            # else:
+            # Create a mock AI response for testing
+            ai_response: ModelResponse = {
+                "type": "text",
+                "content": f"Echo: {user_message}",
+                "meta": {
+                    "source": "mock_ai",
+                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                },
+            }
 
             # Save AI response to DB
             redis_client.save_message(
@@ -225,6 +346,14 @@ async def health():
         db_health = db_client.health_check()
     else:
         db_health = {"status": "not_configured", "connected": False}
+    stt_health = None
+    if stt_client:
+        try:
+            stt_health = stt_client.health_check()
+        except Exception as e:
+            stt_health = {"status": "unhealthy", "connected": False, "error": str(e)}
+    else:
+        stt_health = {"status": "not_configured", "connected": False}
 
     health_status = {
         "status": "healthy",
@@ -240,6 +369,11 @@ async def health():
             "ai": (
                 ai_health
                 if ai_health
+                else {"status": "not_configured", "connected": False}
+            ),
+            "stt": (
+                stt_health
+                if stt_health
                 else {"status": "not_configured", "connected": False}
             ),
         },
@@ -382,6 +516,127 @@ async def get_report_details(report_id: str):
     except Exception as e:
         logger.error(f"Error fetching report {report_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch report")
+
+
+@app.get("/stt/config")
+async def get_stt_config():
+    """Get Speech-to-Text configuration and supported formats/languages"""
+    if not stt_client:
+        raise HTTPException(
+            status_code=503, detail="Speech-to-Text service not available"
+        )
+
+    try:
+        return {
+            "status": "success",
+            "data": {
+                "supported_formats": stt_client.get_supported_formats(),
+                "supported_languages": stt_client.get_supported_languages(),
+                "default_language": stt_client.language_code,
+                "project_id": stt_client.project_id,
+                "connected": stt_client.connected,
+            },
+        }
+    except Exception as e:
+        logger.error(f"Error getting STT config: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get STT configuration")
+
+
+@app.post("/stt/transcribe")
+async def transcribe_audio(request: Dict[str, Any]):
+    """Test endpoint for audio transcription"""
+    if not stt_client:
+        raise HTTPException(
+            status_code=503, detail="Speech-to-Text service not available"
+        )
+
+    try:
+        # Validate request
+        if "audio_base64" not in request:
+            raise HTTPException(status_code=400, detail="Missing audio_base64 field")
+
+        audio_format = request.get("audio_format", "wav")
+        language_code = request.get("language_code", "en-US")
+
+        # Transcribe audio
+        result = stt_client.transcribe_base64_audio(
+            base64_audio=request["audio_base64"],
+            audio_format=audio_format,
+            language_code=language_code,
+        )
+
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Transcription failed: {result.get('error', 'Unknown error')}",
+            )
+
+        return {
+            "status": "success",
+            "data": result,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error during transcription: {e}")
+        raise HTTPException(
+            status_code=500, detail="Internal server error during transcription"
+        )
+
+
+@app.get("/ws/format")
+async def websocket_message_format():
+    """Get WebSocket message format documentation"""
+    return {
+        "status": "success",
+        "message": "WebSocket message format documentation",
+        "formats": {
+            "text_message": {
+                "role": "user",
+                "content": "Hello, this is a text message",
+                "audio": None,
+                "audio_format": None,
+                "language_code": None,
+            },
+            "audio_message": {
+                "role": "user",
+                "content": None,
+                "audio": "base64_encoded_audio_data",
+                "audio_format": "webm",  # Optional: webm, wav, mp3, ogg, m4a
+                "language_code": "en-US",  # Optional: default is en-US
+            },
+        },
+        "supported_audio_formats": ["webm", "wav", "mp3", "ogg", "m4a"],
+        "supported_languages": [
+            "en-US",
+            "en-GB",
+            "es-ES",
+            "fr-FR",
+            "de-DE",
+            "it-IT",
+            "pt-BR",
+            "ja-JP",
+            "ko-KR",
+            "zh-CN",
+            "zh-TW",
+            "ar-SA",
+            "hi-IN",
+            "ru-RU",
+            "nl-NL",
+            "sv-SE",
+            "da-DK",
+            "no-NO",
+            "fi-FI",
+        ],
+        "notes": [
+            "For text messages: provide 'content' field, leave 'audio' as null",
+            "For audio messages: provide 'audio' field with base64 encoded data, leave 'content' as null",
+            "Cannot have both 'content' and 'audio' in the same message",
+            "Browser recordings are typically in 'webm' format",
+            "Audio transcription confidence score is returned with transcription results",
+        ],
+    }
 
 
 @app.get("/")

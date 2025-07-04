@@ -1,11 +1,14 @@
 from enum import Enum
 from typing_extensions import TypedDict
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 
 class WebSocketData(TypedDict):
-    type: str
-    content: str
+    role: str
+    content: Optional[str]
+    audio: Optional[str]  # Base64 encoded audio data
+    audio_format: Optional[str]
+    language_code: Optional[str]
 
 
 class ConversationContext(TypedDict):
@@ -65,3 +68,26 @@ class DocumentMessage(TypedDict):
     content: str
     timestamp: str
     s3_doc_url: str
+
+
+class AudioTranscriptionResult(TypedDict):
+    transcript: str
+    confidence: float
+    words: Optional[List[Dict[str, str]]]
+
+
+class AudioTranscriptionResponse(TypedDict):
+    success: bool
+    transcriptions: List[AudioTranscriptionResult]
+    language_code: str
+    audio_format: str
+    error: Optional[str]
+
+
+class AudioMessage(TypedDict):
+    role: str
+    content: str  # This will be the transcribed text
+    timestamp: str
+    audio_format: str
+    language_code: str
+    transcription_confidence: float
