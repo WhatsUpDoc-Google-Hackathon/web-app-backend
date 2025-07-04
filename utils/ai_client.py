@@ -85,38 +85,13 @@ class VertexClient:
         if config_dict:
             return config_dict
         
-        if config_path:
-            try:
-                with open(config_path, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except Exception as e:
-                logger.error(f"Error loading configuration: {e}")
-                raise
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading configuration: {e}")
+            raise
         
-        return self._get_default_multimodal_config()
-    
-    def _get_default_multimodal_config(self) -> Dict[str, Any]:
-        """Default configuration optimized for multimodal models"""
-        return {
-            "vertex_ai": {
-                "project_id": os.environ.get("GOOGLE_CLOUD_PROJECT"),
-                "default_region": "europe-west4"
-            },
-            "models": {
-                "gemini_vision": {
-                    "model_type": "gemini-pro-vision",
-                    "endpoint_id": "your-gemini-vision-endpoint",
-                    "supports_images": True,
-                    "max_images_per_request": 16,
-                    "supported_image_formats": ["jpeg", "png", "webp", "heic"],
-                    "system_instruction": "You are an expert in multimodal analysis. Analyze the provided text and images.",
-                    "default_params": {
-                        "max_tokens": 2048,
-                        "temperature": 0.0
-                    }
-                }
-            }
-        }
     
     def _apply_global_config(self):
         """Apply global configuration settings"""
@@ -158,7 +133,6 @@ class VertexClient:
                 else:
                     # Build full endpoint name
                     endpoint_name = f"projects/{self.project_id}/locations/{vertex_model.region}/endpoints/{vertex_model.endpoint_id}"
-                
                 endpoint = aiplatform.Endpoint(
                     endpoint_name=endpoint_name,
                     project=self.project_id,
