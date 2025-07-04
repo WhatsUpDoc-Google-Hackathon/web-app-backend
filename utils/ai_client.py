@@ -368,9 +368,18 @@ class VertexClient:
                 # Merge generation params with full prompt
                 full_prompt = f"{full_prompt}\n\n{generation_params}"
                 # instances = [{"prompt": full_prompt}]
-                response = endpoint.predict({"prompt": full_prompt})
-
-                logger.info(f"Text prediction for model {target_model_id}")
+                try:
+                    response = endpoint.predict({"prompt": full_prompt})
+                except Exception as e:
+                    logger.error(f"Error during text prediction: {json.dumps(e)}")
+                    return {
+                        "prediction": None,
+                        "generated_text": None,
+                        "model_id": target_model_id,
+                        "error": str(e),
+                        "success": False,
+                        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                    }
 
             # Process response
             prediction = response.predictions[0] if response.predictions else None
