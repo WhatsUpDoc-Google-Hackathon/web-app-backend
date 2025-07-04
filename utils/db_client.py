@@ -26,11 +26,6 @@ class DBClient:
             "charset": "utf8mb4",
         }
 
-        # If running on GCP with Cloud SQL, use the connection name for socket connection
-        if config.DB_CONNECTION_NAME:
-            params["host"] = f"/cloudsql/{config.DB_CONNECTION_NAME}"
-            params.pop("port", None)  # Remove port for socket connection
-
         return params
 
     def get_connection(self):
