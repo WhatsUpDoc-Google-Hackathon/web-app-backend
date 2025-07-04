@@ -292,7 +292,7 @@ class VertexClient:
                 logger.info(f"Text prediction for model {model_id}")
             
             # Make prediction
-            response = endpoint.predict(instances=instances)
+            response = endpoint.predict(instances=instances, use_dedicated_endpoint=True)
             
             prediction = response.predictions[0] if response.predictions else None
             
