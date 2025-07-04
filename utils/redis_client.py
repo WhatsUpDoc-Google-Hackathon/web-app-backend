@@ -3,7 +3,13 @@ import json
 import datetime
 import logging
 from typing import List, Dict, Any, Union, Optional
-from .custom_types import MessageSender, ModelResponse
+from .custom_types import (
+    MessageSender,
+    ModelResponse,
+    ConversationMessage,
+    ModelReportRequest,
+    Document,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +150,7 @@ class RedisClient:
             logger.error(f"Error saving message to Redis: {e}")
             return False
 
-    def fetch_session_messages(self, session_id: str) -> List[Dict[str, Any]]:
+    def fetch_session_messages(self, session_id: str) -> List[ConversationMessage]:
         """
         Fetch all messages for a session from Redis
 
@@ -152,7 +158,7 @@ class RedisClient:
             session_id: Unique session identifier
 
         Returns:
-            List[Dict]: List of message objects in chronological order (oldest first)
+            List[ConversationMessage]: List of message objects in chronological order (oldest first)
         """
         if not self._ensure_connection():
             logger.warning("Cannot fetch messages - Redis not connected")
@@ -169,11 +175,11 @@ class RedisClient:
                 return []
 
             # Parse JSON messages and reverse to get chronological order
-            messages = []
+            messages: List[ConversationMessage] = []
             for raw_msg in reversed(raw_messages):  # Reverse to get oldest first
                 try:
                     message = json.loads(raw_msg)
-                    messages.append(message)
+                    messages.append(ConversationMessage(**message))
                 except json.JSONDecodeError as e:
                     logger.error(f"Error parsing message JSON: {e}")
                     continue
@@ -184,6 +190,36 @@ class RedisClient:
         except Exception as e:
             logger.error(f"Error fetching messages from Redis: {e}")
             return []
+
+    def format_conversation_messages(
+        self, messages: List[ConversationMessage]
+    ) -> List[ModelReportRequest]:
+        """
+        Format conversation messages for report generation
+        """
+        conversation: List[ConversationMessage] = []
+        documents: List[Document] = []
+        for message in messages:
+            conversation.append(
+                ConversationMessage(
+                    {
+                        "role": message["role"],
+                        "content": message["content"],
+                        "timestamp": message["timestamp"],
+                    }
+                )
+            )
+            if message["s3_doc_url"]:
+                documents.append(
+                    Document(
+                        {
+                            "name": message["s3_doc_url"],
+                            "url": message["s3_doc_url"],
+                        }
+                    )
+                )
+
+        return ModelReportRequest(conversation=conversation, documents=documents)
 
     def delete_session(self, session_id: str) -> bool:
         """
