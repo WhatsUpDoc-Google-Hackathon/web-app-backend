@@ -43,8 +43,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize clients with error handling
-# ai_client = VertexAIClient()
+try:
+    from utils.ai_client import VertexClient
+
+    logger.info("Attempting to initialize AI client...")
+    logger.info("AI client configuration:")
+    logger.info(f"  Models config path: {config.MODELS_CONFIG_PATH}")
+    logger.info(f"  Project ID: {config.VERTEX_PROJECT_ID}")
+    logger.info(f"  Default region: {config.VERTEX_REGION}")
+
+    ai_client = VertexClient(
+        config_path=config.MODELS_CONFIG_PATH,
+        project_id=config.VERTEX_PROJECT_ID,
+        default_region=config.VERTEX_REGION,
+        auto_initialize=True,
+    )
+    logger.info("AI client initialized successfully")
+except Exception as e:
+    ai_client = None
+    logger.error(f"Failed to initialize AI client: {e}")
+    logger.warning("Continuing without AI client - using mock responses")
+
 db_client = None
 try:
     logger.info("Attempting to connect to PostgreSQL database...")
@@ -71,6 +90,8 @@ except Exception as e:
     logger.error(f"Failed to connect to Redis: {e}")
     logger.warning("Continuing without Redis - message persistence disabled")
 
+# db_client = DBClient()
+# stt_streamer = SpeechToTextStreamer()
 
 def build_conversation_context(session_id: str) -> Dict[str, List[ConversationMessage]]:
     """
@@ -127,21 +148,31 @@ async def websocket_endpoint(websocket: WebSocket):
                 session_id, user_id, MessageSender.USER, user_message
             )
 
-            # Build conversation context for AI
-            conversation_context = build_conversation_context(session_id)
+            # Send message to AI if available, else mock
+            if ai_client:
+              # Build conversation context for AI
+                conversation_context = build_conversation_context(session_id)
 
-            # Send message to AI (with conversation context)
-            # ai_response: ModelResponse = ai_client.chat(user_message, conversation_context)
-
-            # Create a mock AI response for testing
-            ai_response: ModelResponse = {
-                "type": "ai",
-                "content": f"Echo: {user_message}",
-                "meta": {
-                    "source": "mock_ai",
-                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                },
-            }
+                ai_result = ai_client.predict(user_message)
+                ai_response: ModelResponse = {
+                    "type": "text",
+                    "content": ai_result.get("prediction") if ai_result else "AI error",
+                    "meta": {
+                        "source": "vertex_ai",
+                        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                        "success": ai_result.get("success", False) if ai_result else False,
+                    },
+                }
+            else:
+                # Create a mock AI response for testing
+                ai_response: ModelResponse = {
+                    "type": "text",
+                    "content": f"Echo: {user_message}",
+                    "meta": {
+                        "source": "mock_ai",
+                        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                    },
+                }
 
             # Save AI response to DB
             redis_client.save_message(
@@ -184,7 +215,12 @@ async def health():
     redis_health = None
     if redis_client:
         redis_health = redis_client.health_check()
-
+    ai_health = None
+    if ai_client:
+        try:
+            ai_health = ai_client.health_check()
+        except Exception as e:
+            ai_health = {"status": "unhealthy", "connected": False, "error": str(e)}
     db_health = None
     if db_client:
         db_health = db_client.health_check()
@@ -202,10 +238,15 @@ async def health():
                 if redis_health
                 else {"status": "not_configured", "connected": False}
             ),
+            "ai": (
+                ai_health
+                if ai_health
+                else {"status": "not_configured", "connected": False}
+            ),
         },
     }
     logger.info(
-        f"Health check requested - DB: {db_health['status']}, Redis: {redis_health['status'] if redis_health else 'not_configured'}"
+        f"Health check requested - DB: {db_health['status']}, Redis: {redis_health['status'] if redis_health else 'not_configured'}, AI: {ai_health['status'] if ai_health else 'not_configured'}"
     )
     return health_status
 
