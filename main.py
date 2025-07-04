@@ -79,7 +79,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # Create a mock AI response for testing
             ai_response: ModelResponse = {
-                "type": "text",
+                "type": "ai",
                 "content": f"Echo: {user_message}",
                 "meta": {
                     "source": "mock_ai",
