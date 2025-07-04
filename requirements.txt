@@ -10,3 +10,4 @@ python-dotenv==1.0.0
 Pillow==10.1.0
 typing-extensions==4.8.0
 markdown-pdf==1.7
+psycopg2-binary==2.9.9

@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from typing import List, Dict
 
 # from utils.ai_client import VertexAIClient
-# from utils.db_client import DBClient
+from utils.db_client import DBClient
 from utils.custom_types import (
     WebSocketData,
     MessageSender,
@@ -45,7 +45,15 @@ app.add_middleware(
 
 # Initialize clients with error handling
 # ai_client = VertexAIClient()
-# db_client = DBClient()
+db_client = None
+try:
+    logger.info("Attempting to connect to PostgreSQL database...")
+    db_client = DBClient()
+    logger.info("Database client initialized successfully")
+except Exception as e:
+    logger.error(f"Failed to connect to database: {e}")
+    logger.warning("Continuing without database - some endpoints will not work")
+
 file_handler = FileHandler()
 
 redis_client = None
@@ -177,11 +185,18 @@ async def health():
     if redis_client:
         redis_health = redis_client.health_check()
 
+    db_health = None
+    if db_client:
+        db_health = db_client.health_check()
+    else:
+        db_health = {"status": "not_configured", "connected": False}
+
     health_status = {
         "status": "healthy",
         "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
         "services": {
             "api": "running",
+            "database": db_health,
             "redis": (
                 redis_health
                 if redis_health
@@ -190,7 +205,7 @@ async def health():
         },
     }
     logger.info(
-        f"Health check requested - Redis: {redis_health['status'] if redis_health else 'not_configured'}"
+        f"Health check requested - DB: {db_health['status']}, Redis: {redis_health['status'] if redis_health else 'not_configured'}"
     )
     return health_status
 
@@ -270,6 +285,86 @@ async def upload(upload_request: UploadRequest) -> UploadResponse:
         raise HTTPException(
             status_code=500, detail="Internal server error during upload"
         )
+
+
+@app.get("/patients")
+async def get_all_patients():
+    """Get all patients with their latest reports for the table view"""
+    if not db_client:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    try:
+        patients = db_client.get_all_patients_with_latest_reports()
+        return {"status": "success", "data": patients, "count": len(patients)}
+    except Exception as e:
+        logger.error(f"Error fetching patients: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch patients")
+
+
+@app.get("/patients/{patient_id}")
+async def get_patient_details(patient_id: str):
+    """Get patient details by ID"""
+    if not db_client:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    try:
+        patient = db_client.get_patient_by_id(patient_id)
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found")
+
+        return {"status": "success", "data": patient}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching patient {patient_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch patient")
+
+
+@app.get("/patients/{patient_id}/reports")
+async def get_patient_reports(patient_id: str):
+    """Get all reports for a patient (timeline view)"""
+    if not db_client:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    try:
+        # First check if patient exists
+        patient = db_client.get_patient_by_id(patient_id)
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found")
+
+        reports = db_client.get_patient_reports_timeline(patient_id)
+        return {
+            "status": "success",
+            "data": {"patient": patient, "reports": reports},
+            "count": len(reports),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching reports for patient {patient_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch patient reports")
+
+
+@app.get("/reports/{report_id}")
+async def get_report_details(report_id: str):
+    """Get specific report details by ID"""
+    if not db_client:
+        raise HTTPException(status_code=503, detail="Database not available")
+
+    try:
+        report = db_client.get_report_by_id(report_id)
+        if not report:
+            raise HTTPException(status_code=404, detail="Report not found")
+
+        # Also get patient info for context
+        patient = db_client.get_patient_by_id(report["patient_id"])
+
+        return {"status": "success", "data": {"report": report, "patient": patient}}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching report {report_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch report")
 
 
 @app.get("/")
