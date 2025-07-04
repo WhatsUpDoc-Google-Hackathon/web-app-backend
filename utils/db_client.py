@@ -3,9 +3,15 @@ import psycopg2.extras
 import logging
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
-import os
+import sys
 import config
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
 logger = logging.getLogger(__name__)
 
 
@@ -37,6 +43,7 @@ class DBClient:
         try:
             conn = psycopg2.connect(**self.connection_params)
             conn.autocommit = False
+            logger.info(f"Connected to database: {config.DB_NAME}")
             return conn
         except Exception as e:
             logger.error(f"Failed to connect to database: {e}")
@@ -182,6 +189,8 @@ class DBClient:
             cursor.close()
             conn.close()
 
+            logger.info(f"Fetched {len(rows)} patients with latest reports")
+
             return [dict(row) for row in rows]
 
         except Exception as e:
@@ -200,6 +209,8 @@ class DBClient:
 
             cursor.close()
             conn.close()
+
+            logger.info(f"Fetched patient {patient_id}")
 
             return dict(row) if row else None
 
@@ -224,6 +235,8 @@ class DBClient:
 
             rows = cursor.fetchall()
 
+            logger.info(f"Fetched {len(rows)} reports for patient {patient_id}")
+
             cursor.close()
             conn.close()
 
@@ -242,6 +255,8 @@ class DBClient:
             cursor.execute("SELECT * FROM reports WHERE id = %s", (report_id,))
 
             row = cursor.fetchone()
+
+            logger.info(f"Fetched report {report_id}")
 
             cursor.close()
             conn.close()
@@ -283,6 +298,8 @@ class DBClient:
 
             conn.commit()
 
+            logger.info(f"Report {report_id} saved for patient {patient_id}")
+
             cursor.close()
             conn.close()
 
@@ -305,6 +322,7 @@ class DBClient:
             cursor.execute("SELECT COUNT(*) FROM reports")
             report_count = cursor.fetchone()[0]
 
+            logger.info(f"Database health check completed")
             cursor.close()
             conn.close()
 
