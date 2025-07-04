@@ -244,9 +244,7 @@ async def health():
             ),
         },
     }
-    logger.info(
-        f"Health check requested - DB: {db_health['status']}, Redis: {redis_health['status'] if redis_health else 'not_configured'}, AI: {ai_health['status'] if ai_health else 'not_configured'}"
-    )
+    logger.info(f"Health check requested - {health_status}")
     return health_status
 
 
