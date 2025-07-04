@@ -20,7 +20,7 @@ REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 
 # Database Configuration for GCP Cloud SQL
 DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", 5432)
+DB_PORT = os.getenv("DB_PORT", 3306)
 DB_NAME = os.getenv("DB_NAME", "patients")
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
