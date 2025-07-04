@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class RedisClient:
     def __init__(
         self,
-        host: str = "localhost",
+        host: str = "host.docker.internal",
         port: int = 6379,
         db: int = 0,
         password: Optional[str] = None,

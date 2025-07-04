@@ -42,7 +42,7 @@ try:
         port=config.REDIS_PORT,
         db=config.REDIS_DB,
         password=config.REDIS_PASSWORD,
-        test_connection=False,  # Don't test connection during startup
+        test_connection=True,
     )
     logger.info("Redis client initialized successfully")
 except Exception as e:
