@@ -207,66 +207,82 @@ class VertexClient:
             # Préparer l'instruction système
             sys_instruction = system_instruction or model_config.system_instruction
             
-            # Construire les parts de contenu
-            content_parts = []
-            
-            # Ajouter l'instruction système et le prompt
-            if sys_instruction:
-                full_prompt = f"{sys_instruction}\n\n{text_prompt}"
-            else:
-                full_prompt = text_prompt
-            
-            # Ajouter les images si présentes
-            if images:
-                # Vérifier le nombre d'images
-                if len(images) > model_config.max_images_per_request:
-                    logger.warning(f"Trop d'images ({len(images)}), limite: {model_config.max_images_per_request}")
-                    images = images[:model_config.max_images_per_request]
-                
-                # Traiter chaque image
-                for i, image in enumerate(images):
-                    try:
-                        # Encoder l'image
-                        image_base64 = self._encode_image(image)
-                        
-                        # Déterminer le type MIME
-                        if isinstance(image, str):
-                            mime_type = self._get_image_mime_type(image)
-                        else:
-                            mime_type = "image/jpeg"  # Défaut pour données binaires
-                        
-                        # Ajouter à la liste des parts
-                        content_parts.append({
-                            "inline_data": {
-                                "mime_type": mime_type,
-                                "data": image_base64
-                            }
-                        })
-                        
-                    except Exception as e:
-                        logger.error(f"Erreur lors du traitement de l'image {i}: {e}")
-                        continue
-            
-            # Ajouter le texte en dernier
-            content_parts.append({"text": full_prompt})
-            
             # Paramètres de génération
             generation_params = {
                 "max_tokens": kwargs.get("max_tokens", model_config.max_tokens),
                 "temperature": kwargs.get("temperature", model_config.temperature),
                 "top_p": kwargs.get("top_p", 1.0),
-                "raw_response": kwargs.get("raw_response", True),
             }
             
-            # Construire la requête
-            instances = [{
-                "content": {
-                    "parts": content_parts
-                },
-                **generation_params
-            }]
-            
-            logger.info(f"Prédiction multimodale: {len(content_parts)} parts ({len(images or [])} images)")
+            # Construire la requête selon le type de modèle
+            if model_config.supports_images:
+                # Modèle multimodal - utiliser la structure content/parts
+                content_parts = []
+                
+                # Ajouter l'instruction système et le prompt
+                if sys_instruction:
+                    full_prompt = f"{sys_instruction}\n\n{text_prompt}"
+                else:
+                    full_prompt = text_prompt
+                
+                # Ajouter les images si présentes
+                if images:
+                    # Vérifier le nombre d'images
+                    if len(images) > model_config.max_images_per_request:
+                        logger.warning(f"Trop d'images ({len(images)}), limite: {model_config.max_images_per_request}")
+                        images = images[:model_config.max_images_per_request]
+                    
+                    # Traiter chaque image
+                    for i, image in enumerate(images):
+                        try:
+                            # Encoder l'image
+                            image_base64 = self._encode_image(image)
+                            
+                            # Déterminer le type MIME
+                            if isinstance(image, str):
+                                mime_type = self._get_image_mime_type(image)
+                            else:
+                                mime_type = "image/jpeg"  # Défaut pour données binaires
+                            
+                            # Ajouter à la liste des parts
+                            content_parts.append({
+                                "inline_data": {
+                                    "mime_type": mime_type,
+                                    "data": image_base64
+                                }
+                            })
+                            
+                        except Exception as e:
+                            logger.error(f"Erreur lors du traitement de l'image {i}: {e}")
+                            continue
+                
+                # Ajouter le texte en dernier
+                content_parts.append({"text": full_prompt})
+                
+                # Construire la requête multimodale
+                instances = [{
+                    "content": {
+                        "parts": content_parts
+                    },
+                    **generation_params
+                }]
+                
+                logger.info(f"Prédiction multimodale: {len(content_parts)} parts ({len(images or [])} images)")
+                
+            else:
+                # Modèle texte uniquement - utiliser la structure prompt
+                if sys_instruction:
+                    full_prompt = f"{sys_instruction}\n\n{text_prompt}"
+                else:
+                    full_prompt = text_prompt
+                
+                # Construire la requête texte
+                instances = [{
+                    "prompt": full_prompt,
+                    **generation_params
+                }]
+                
+                logger.info(f"Prédiction textuelle pour modèle {model_id}")
             
             # Faire la prédiction
             response = endpoint.predict(
