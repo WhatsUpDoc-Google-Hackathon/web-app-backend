@@ -11,32 +11,38 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 class VertexModelConfig:
-    """Configuration optimisée pour modèles multimodaux"""
+    """Configuration optimized for multimodal models"""
     
     def __init__(self, config_dict: Dict[str, Any]):
+        """
+        Initialize model configuration
+        
+        Args:
+            config_dict: Dictionary containing model configuration parameters
+        """
         self.model_id = config_dict["model_id"]
         self.model_type = config_dict["model_type"]
         self.endpoint_id = config_dict["endpoint_id"]
         self.region = config_dict.get("region")
         self.display_name = config_dict.get("display_name", self.model_id)
         
-        # Capacités multimodales
+        # Multimodal capabilities
         self.supports_images = config_dict.get("supports_images", False)
         self.max_images_per_request = config_dict.get("max_images_per_request", 1)
         self.supported_image_formats = config_dict.get("supported_image_formats", ["jpeg", "png", "webp"])
         self.max_image_size_mb = config_dict.get("max_image_size_mb", 20)
         
-        # Paramètres par défaut
+        # Default parameters
         self.default_params = config_dict.get("default_params", {})
         self.max_tokens = self.default_params.get("max_tokens", 1000)
         self.temperature = self.default_params.get("temperature", 0.0)
         
-        # Configuration système
+        # System configuration
         self.system_instruction = config_dict.get("system_instruction", "")
         self.enabled = config_dict.get("enabled", True)
 
 class VertexClient:
-    """Client Vertex AI spécialisé pour entrées multimodales (texte + images)"""
+    """Vertex AI client specialized for multimodal inputs (text + images)"""
     
     def __init__(
         self,
@@ -46,13 +52,23 @@ class VertexClient:
         default_region: str = "europe-west4",
         auto_initialize: bool = True,
     ):
+        """
+        Initialize Vertex AI client
+        
+        Args:
+            config_path: Path to JSON configuration file
+            config_dict: Configuration dictionary (overrides config_path)
+            project_id: Google Cloud project ID
+            default_region: Default region for Vertex AI
+            auto_initialize: Whether to initialize connections automatically
+        """
         self.project_id = project_id
         self.default_region = default_region
         self.models: Dict[str, VertexModelConfig] = {}
         self.endpoints: Dict[str, aiplatform.Endpoint] = {}
         self.connected = False
         
-        # Charger la configuration
+        # Load configuration
         self.config = self._load_configuration(config_path, config_dict)
         self._apply_global_config()
         
@@ -65,7 +81,7 @@ class VertexClient:
         config_path: Optional[str], 
         config_dict: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """Charge la configuration multimodale"""
+        """Load multimodal configuration from file or dictionary"""
         if config_dict:
             return config_dict
         
@@ -74,13 +90,13 @@ class VertexClient:
                 with open(config_path, 'r', encoding='utf-8') as f:
                     return json.load(f)
             except Exception as e:
-                logger.error(f"Erreur lors du chargement de la configuration: {e}")
+                logger.error(f"Error loading configuration: {e}")
                 raise
         
         return self._get_default_multimodal_config()
     
     def _get_default_multimodal_config(self) -> Dict[str, Any]:
-        """Configuration par défaut optimisée pour le multimodal"""
+        """Default configuration optimized for multimodal models"""
         return {
             "vertex_ai": {
                 "project_id": os.environ.get("GOOGLE_CLOUD_PROJECT"),
@@ -93,7 +109,7 @@ class VertexClient:
                     "supports_images": True,
                     "max_images_per_request": 16,
                     "supported_image_formats": ["jpeg", "png", "webp", "heic"],
-                    "system_instruction": "Tu es un expert en analyse multimodale. Analyse le texte et les images fournis.",
+                    "system_instruction": "You are an expert in multimodal analysis. Analyze the provided text and images.",
                     "default_params": {
                         "max_tokens": 2048,
                         "temperature": 0.0
@@ -103,29 +119,27 @@ class VertexClient:
         }
     
     def _apply_global_config(self):
-        """Applique la configuration globale"""
+        """Apply global configuration settings"""
         vertex_config = self.config.get("vertex_ai", {})
         
         if not self.project_id:
-            self.project_id = (
-                vertex_config.get("project_id")
-            )
+            self.project_id = vertex_config.get("project_id")
         
         if "default_region" in vertex_config:
             self.default_region = vertex_config["default_region"]
     
     def _initialize_vertex_ai(self):
-        """Initialise Vertex AI"""
+        """Initialize Vertex AI connection"""
         try:
             aiplatform.init(project=self.project_id, location=self.default_region)
             self.connected = True
-            logger.info(f"Vertex AI initialisé pour les entrées multimodales")
+            logger.info(f"Vertex AI initialized for multimodal inputs")
         except Exception as e:
-            logger.error(f"Erreur lors de l'initialisation: {e}")
+            logger.error(f"Error during initialization: {e}")
             raise
     
     def _load_models(self):
-        """Charge les modèles multimodaux"""
+        """Load multimodal models and their endpoints"""
         models_config = self.config.get("models", {})
         
         for model_id, model_config in models_config.items():
@@ -137,8 +151,16 @@ class VertexClient:
                 if not vertex_model.enabled:
                     continue
                 
+                # Build full endpoint name for dedicated endpoints
+                if vertex_model.endpoint_id.startswith("projects/"):
+                    # endpoint_id is already a full resource name
+                    endpoint_name = vertex_model.endpoint_id
+                else:
+                    # Build full endpoint name
+                    endpoint_name = f"projects/{self.project_id}/locations/{vertex_model.region}/endpoints/{vertex_model.endpoint_id}"
+                
                 endpoint = aiplatform.Endpoint(
-                    endpoint_name=vertex_model.endpoint_id,
+                    endpoint_name=endpoint_name,
                     project=self.project_id,
                     location=vertex_model.region,
                 )
@@ -146,26 +168,34 @@ class VertexClient:
                 self.models[model_id] = vertex_model
                 self.endpoints[model_id] = endpoint
                 
-                logger.info(f"Modèle multimodal {model_id} chargé")
+                logger.info(f"Multimodal model {model_id} loaded with endpoint: {endpoint_name}")
                 
             except Exception as e:
-                logger.error(f"Erreur lors du chargement du modèle {model_id}: {e}")
+                logger.error(f"Error loading model {model_id}: {e}")
                 raise
     
     def _encode_image(self, image_input: Union[str, bytes]) -> str:
-        """Encode une image en base64"""
+        """
+        Encode image to base64 string
+        
+        Args:
+            image_input: File path (str) or binary data (bytes)
+            
+        Returns:
+            str: Base64 encoded image
+        """
         if isinstance(image_input, str):
-            # Chemin vers fichier
+            # File path
             with open(image_input, "rb") as f:
                 return base64.b64encode(f.read()).decode("utf-8")
         elif isinstance(image_input, bytes):
-            # Données binaires
+            # Binary data
             return base64.b64encode(image_input).decode("utf-8")
         else:
-            raise ValueError("image_input doit être un chemin (str) ou des données (bytes)")
+            raise ValueError("image_input must be a file path (str) or binary data (bytes)")
     
     def _get_image_mime_type(self, image_path: str) -> str:
-        """Détermine le type MIME d'une image"""
+        """Determine MIME type of an image based on file extension"""
         extension = Path(image_path).suffix.lower()
         mime_types = {
             '.jpg': 'image/jpeg',
@@ -186,64 +216,68 @@ class VertexClient:
         **kwargs
     ) -> Optional[Dict[str, Any]]:
         """
-        Prédiction multimodale avec texte et images en entrée
+        Multimodal prediction with text and images as input
         
         Args:
-            model_id: ID du modèle à utiliser
-            text_prompt: Prompt textuel
-            images: Liste d'images (chemins de fichiers ou données binaires)
-            system_instruction: Instruction système personnalisée
-            **kwargs: Paramètres supplémentaires (max_tokens, temperature, etc.)
+            model_id: Model ID to use
+            text_prompt: Text prompt
+            images: List of images (file paths or binary data)
+            system_instruction: Custom system instruction
+            **kwargs: Additional parameters (max_tokens, temperature, etc.)
+            
+        Returns:
+            Dict containing prediction results or None if error
         """
         model_config = self.models[model_id]
         endpoint = self.endpoints[model_id]
         
+        # Validate image support
         if not model_config.supports_images and images:
-            logger.error(f"Le modèle {model_id} ne supporte pas les images")
+            logger.error(f"Model {model_id} does not support images")
             return None
         
         try:
-            # Préparer l'instruction système
+            # Prepare system instruction
             sys_instruction = system_instruction or model_config.system_instruction
             
-            # Paramètres de génération
+            # Generation parameters
             generation_params = {
                 "max_tokens": kwargs.get("max_tokens", model_config.max_tokens),
                 "temperature": kwargs.get("temperature", model_config.temperature),
                 "top_p": kwargs.get("top_p", 1.0),
             }
             
-            # Construire la requête selon le type de modèle
+            # Build request based on model type
             if model_config.supports_images:
-                # Modèle multimodal - utiliser la structure content/parts
+                # Multimodal model - use content/parts structure
                 content_parts = []
                 
-                # Ajouter l'instruction système et le prompt
+                # Add system instruction and prompt
                 if sys_instruction:
                     full_prompt = f"{sys_instruction}\n\n{text_prompt}"
                 else:
                     full_prompt = text_prompt
                 
-                # Ajouter les images si présentes
+                # Add images if present
                 if images:
-                    # Vérifier le nombre d'images
+                    # Check image count limit
                     if len(images) > model_config.max_images_per_request:
-                        logger.warning(f"Trop d'images ({len(images)}), limite: {model_config.max_images_per_request}")
+                        logger.warning(f"Too many images ({len(images)}), limit: {model_config.max_images_per_request}")
                         images = images[:model_config.max_images_per_request]
                     
-                    # Traiter chaque image
+                    # Process each image
                     for i, image in enumerate(images):
                         try:
-                            # Encoder l'image
+                            # Encode image
                             image_base64 = self._encode_image(image)
                             
-                            # Déterminer le type MIME
+                            # Determine MIME type
                             if isinstance(image, str):
                                 mime_type = self._get_image_mime_type(image)
                             else:
-                                mime_type = "image/jpeg"  # Défaut pour données binaires
+                                mime_type = "image/jpeg"  # Default for binary data
                             
-                            # Ajouter à la liste des parts
+                            # Add to parts list
                             content_parts.append({
                                 "inline_data": {
                                     "mime_type": mime_type,
@@ -252,13 +286,13 @@ class VertexClient:
                             })
                             
                         except Exception as e:
-                            logger.error(f"Erreur lors du traitement de l'image {i}: {e}")
+                            logger.error(f"Error processing image {i}: {e}")
                             continue
                 
-                # Ajouter le texte en dernier
+                # Add text last
                 content_parts.append({"text": full_prompt})
                 
-                # Construire la requête multimodale
+                # Build multimodal request
                 instances = [{
                     "content": {
                         "parts": content_parts
@@ -266,27 +300,25 @@ class VertexClient:
                     **generation_params
                 }]
                 
-                logger.info(f"Prédiction multimodale: {len(content_parts)} parts ({len(images or [])} images)")
+                logger.info(f"Multimodal prediction: {len(content_parts)} parts ({len(images or [])} images)")
                 
             else:
-                # Modèle texte uniquement - utiliser la structure prompt
+                # Text-only model - use prompt structure
                 if sys_instruction:
                     full_prompt = f"{sys_instruction}\n\n{text_prompt}"
                 else:
                     full_prompt = text_prompt
                 
-                # Construire la requête texte
+                # Build text request
                 instances = [{
                     "prompt": full_prompt,
                     **generation_params
                 }]
                 
-                logger.info(f"Prédiction textuelle pour modèle {model_id}")
+                logger.info(f"Text prediction for model {model_id}")
             
-            # Faire la prédiction
-            response = endpoint.predict(
-                instances=instances
-            )
+            # Make prediction
+            response = endpoint.predict(instances=instances)
             
             prediction = response.predictions[0] if response.predictions else None
             
@@ -302,7 +334,7 @@ class VertexClient:
             }
             
         except Exception as e:
-            logger.error(f"Erreur lors de la prédiction multimodale: {e}")
+            logger.error(f"Error during multimodal prediction: {e}")
             return {
                 "prediction": None,
                 "model_id": model_id,
@@ -312,7 +344,7 @@ class VertexClient:
             }
     
     def _determine_input_type(self, text: str, images: Optional[List]) -> str:
-        """Détermine le type d'entrée utilisé"""
+        """Determine the type of input used for the prediction"""
         has_text = bool(text and text.strip())
         has_images = bool(images and len(images) > 0)
         
