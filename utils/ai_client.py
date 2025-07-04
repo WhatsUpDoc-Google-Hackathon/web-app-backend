@@ -305,6 +305,9 @@ class VertexClient:
                     else:
                         full_prompt += f"{context['content']}\n\n"
 
+            # Add the current user message
+            full_prompt += text_prompt
+
             # Build request based on model type
             if model_config.supports_images and images:
                 # Multimodal model - use content/parts structure
@@ -359,8 +362,13 @@ class VertexClient:
 
             else:
                 # Text-only model - use simple prompt structure
-                instances = [{"content": full_prompt, **generation_params}]
-                response = endpoint.predict(instances=instances)
+                logger.info(f"Text prediction for model {target_model_id}")
+                logger.info(f"Full prompt: {full_prompt}")
+                logger.info(f"Generation params: {generation_params}")
+                # Merge generation params with full prompt
+                full_prompt = f"{full_prompt}\n\n{generation_params}"
+                # instances = [{"prompt": full_prompt}]
+                response = endpoint.predict({"prompt": full_prompt})
 
                 logger.info(f"Text prediction for model {target_model_id}")
 
@@ -393,9 +401,7 @@ class VertexClient:
                 "images_count": len(images) if images else 0,
                 "text_prompt": text_prompt,
                 "context_length": (
-                    len(conversation_context.get("conversation", []))
-                    if conversation_context
-                    else 0
+                    len(conversation_context) if conversation_context else 0
                 ),
                 "success": True,
                 "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
