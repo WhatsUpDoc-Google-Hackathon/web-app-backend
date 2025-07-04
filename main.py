@@ -13,7 +13,6 @@ import base64
 from fastapi.responses import FileResponse
 from typing import List, Dict
 
-# from utils.ai_client import VertexAIClient
 from utils.db_client import DBClient
 from utils.custom_types import (
     WebSocketData,
@@ -22,9 +21,11 @@ from utils.custom_types import (
     UploadRequest,
     UploadResponse,
     ConversationMessage,
+    DocumentMessage,
 )
 from utils.redis_client import RedisClient
 from utils.file_handler import FileHandler
+from utils.context_builder import format_conversation_context
 import config
 
 # Configure logging
@@ -109,7 +110,6 @@ def build_conversation_context(
 
     try:
         messages = redis_client.fetch_session_messages(session_id)
-
         logger.info(
             f"Built conversation context with {len(messages)} messages for session {session_id}"
         )
@@ -148,13 +148,14 @@ async def websocket_endpoint(websocket: WebSocket):
             if ai_client:
                 # Build conversation context for AI
                 conversation_context = build_conversation_context(session_id)
+                ctx = format_conversation_context(conversation_context)
                 logger.info(f"Conversation context: {len(conversation_context)}")
-                ai_result = ai_client.predict(user_message)
+                ai_result = ai_client.predict(user_message, ctx)
                 ai_response: ModelResponse = {
                     "type": "text",
                     "content": ai_result.get("prediction") if ai_result else "AI error",
                     "meta": {
-                        "source": "vertex_ai",
+                        "source": ai_result.get("model_id", "unknown"),
                         "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                         "success": (
                             ai_result.get("success", False) if ai_result else False
@@ -271,37 +272,16 @@ async def upload(upload_request: UploadRequest) -> UploadResponse:
 
         # Save to Redis if available
         if redis_client:
-            # Build conversation context for AI document analysis
-            conversation_context = build_conversation_context(
-                upload_request["session_id"]
-            )
-
-            # Analyze document with AI
-            # ai_analysis_response: ModelResponse = ai_client.analyze_document(
-            #     document_url=upload_result["url"],
-            #     filename=upload_request["filename"],
-            #     conversation_context=conversation_context
-            # )
-
-            # Create a mock AI analysis response for testing
-            ai_analysis_response: ModelResponse = {
-                "type": "ai",
-                "content": f"I've analyzed the document '{upload_request['filename']}'. This appears to be a document that has been uploaded to the system for review.",
-                "meta": {
-                    "source": "document_analysis",
-                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                },
+            img_msg: DocumentMessage = {
+                "role": "user",
+                "content": upload_result["blob_path"],
+                "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
             }
-
-            # Save AI analysis response to Redis
             redis_client.save_message(
                 upload_request["session_id"],
                 upload_request["user_id"],
-                MessageSender.IA,
-                ai_analysis_response,
-            )
-            logger.info(
-                f"AI document analysis saved to Redis for session {upload_request['session_id']}"
+                MessageSender.UPLOAD,
+                img_msg,
             )
 
         # Return response

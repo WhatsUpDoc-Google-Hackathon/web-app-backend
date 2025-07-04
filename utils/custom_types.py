@@ -8,9 +8,15 @@ class WebSocketData(TypedDict):
     content: str
 
 
+class ConversationContext(TypedDict):
+    role: str
+    content: str
+
+
 class MessageSender(Enum):
     USER = "user"
     IA = "ai"
+    UPLOAD = "upload"
 
 
 class ModelMetadata(TypedDict):
