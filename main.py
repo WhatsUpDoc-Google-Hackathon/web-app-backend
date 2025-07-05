@@ -146,10 +146,16 @@ async def websocket_endpoint(websocket: WebSocket):
                 ai_result = ai_client.predict(ctx)
                 ai_response: ModelResponse = {
                     "type": "text",
-                    "content": ai_result.get("prediction") if ai_result else "AI error",
+                    "content": (
+                        ai_result.get("generated_text")
+                        if ai_result
+                        else "AI error" if ai_result.get("error") else "AI error"
+                    ),
                     "meta": {
                         "source": ai_result.get("model_id", "unknown"),
-                        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                        "timestamp": ai_result.get(
+                            "timestamp", datetime.datetime.utcnow().isoformat() + "Z"
+                        ),
                         "success": (
                             ai_result.get("success", False) if ai_result else False
                         ),
