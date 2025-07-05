@@ -12,3 +12,4 @@ Pillow==10.1.0
 typing-extensions==4.8.0
 markdown-pdf==1.7
 mysql-connector-python==8.2.0
+openai

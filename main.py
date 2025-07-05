@@ -47,12 +47,6 @@ app.add_middleware(
 try:
     from utils.ai_client import VertexClient
 
-    logger.info("Attempting to initialize AI client...")
-    logger.info("AI client configuration:")
-    logger.info(f"  Models config path: {config.MODELS_CONFIG_PATH}")
-    logger.info(f"  Project ID: {config.VERTEX_PROJECT_ID}")
-    logger.info(f"  Default region: {config.VERTEX_REGION}")
-
     ai_client = VertexClient(
         config_path=config.MODELS_CONFIG_PATH,
         project_id=config.VERTEX_PROJECT_ID,
@@ -149,8 +143,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 # Build conversation context for AI
                 conversation_context = build_conversation_context(session_id)
                 ctx = format_conversation_context(conversation_context)
-                logger.info(f"Conversation context: {len(conversation_context)}")
-                ai_result = ai_client.predict(user_message, ctx)
+                ai_result = ai_client.predict(ctx)
                 ai_response: ModelResponse = {
                     "type": "text",
                     "content": ai_result.get("prediction") if ai_result else "AI error",

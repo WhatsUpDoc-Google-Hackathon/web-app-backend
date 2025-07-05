@@ -1,5 +1,5 @@
 from typing import Dict, List
-from utils.custom_types import ConversationMessage, ConversationContext
+from utils.custom_types import ConversationMessage, ChatMessage, MessageSender
 
 
 def retrieve_document_content(s3_doc_url: str) -> str:
@@ -44,21 +44,34 @@ def retrieve_document_content(s3_doc_url: str) -> str:
 
 def format_conversation_context(
     conversation_context: Dict[str, List[ConversationMessage]],
-) -> List[ConversationContext]:
+) -> List[ChatMessage]:
     """
     Format conversation context for AI model
     """
     conversation_context = []
     for message in conversation_context:
-        conversation_context.append(
-            {
-                "role": message["role"],
-                "content": (
-                    message["content"]
-                    if message["role"] != "upload"
-                    else retrieve_document_content(message["content"])
-                ),
-            }
-        )
+        if message["role"] == MessageSender.UPLOAD:
+            # Handle image upload - create image_url structure
+            conversation_context.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": message["content"]}}
+                    ],
+                }
+            )
+        else:
+            # Handle regular text messages
+            conversation_context.append(
+                {
+                    "role": message["role"],
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": message["content"],
+                        }
+                    ],
+                }
+            )
 
     return conversation_context

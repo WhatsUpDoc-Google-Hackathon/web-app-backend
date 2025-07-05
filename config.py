@@ -21,7 +21,7 @@ REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
 # Vertex AI settings
 VERTEX_PROJECT_ID = os.getenv("VERTEX_PROJECT_ID", "")
 VERTEX_REGION = os.getenv("VERTEX_REGION", "")
-MODELS_CONFIG_PATH = os.getenv("MODELS_CONFIG_PATH", "models.config")
+MODELS_CONFIG_PATH = os.getenv("MODELS_CONFIG_PATH", "models.json")
 
 # Database Configuration for GCP Cloud SQL
 DB_HOST = os.getenv("DB_HOST", "localhost")

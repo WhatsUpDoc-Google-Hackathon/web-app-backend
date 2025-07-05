@@ -1,17 +1,16 @@
 import logging
 import json
-import base64
-from typing import List, Dict, Any, Optional, Union
-from google.cloud import aiplatform
+import google.auth
+from typing import List, Dict, Any, Optional
+import openai
 import datetime
-from pathlib import Path
-from utils.custom_types import ConversationContext
+from utils.custom_types import ChatMessage
 
 logger = logging.getLogger(__name__)
 
 
 class VertexModelConfig:
-    """Configuration optimized for multimodal models"""
+    """Configuration for OpenAI-compatible Vertex AI models"""
 
     def __init__(self, config_dict: Dict[str, Any]):
         """
@@ -23,20 +22,13 @@ class VertexModelConfig:
         self.model_id = config_dict["model_id"]
         self.model_type = config_dict["model_type"]
         self.endpoint_id = config_dict["endpoint_id"]
-        self.region = config_dict.get("region")
+        self.region = config_dict.get("region", "europe-west4")
         self.display_name = config_dict.get("display_name", self.model_id)
-
-        # Multimodal capabilities
-        self.supports_images = config_dict.get("supports_images", False)
-        self.max_images_per_request = config_dict.get("max_images_per_request", 1)
-        self.supported_image_formats = config_dict.get(
-            "supported_image_formats", ["jpeg", "png", "webp"]
-        )
-        self.max_image_size_mb = config_dict.get("max_image_size_mb", 20)
+        self.openai_model_name = config_dict.get("openai_model_name", "gemma-4b-it")
 
         # Default parameters
         self.default_params = config_dict.get("default_params", {})
-        self.max_tokens = self.default_params.get("max_tokens", 1000)
+        self.max_tokens = self.default_params.get("max_tokens", 800)
         self.temperature = self.default_params.get("temperature", 0.0)
 
         # System configuration
@@ -45,7 +37,7 @@ class VertexModelConfig:
 
 
 class VertexClient:
-    """Vertex AI client specialized for multimodal inputs (text + images)"""
+    """Vertex AI client using OpenAI compatibility layer"""
 
     def __init__(
         self,
@@ -56,7 +48,7 @@ class VertexClient:
         auto_initialize: bool = True,
     ):
         """
-        Initialize Vertex AI client
+        Initialize Vertex AI client with OpenAI compatibility
 
         Args:
             config_path: Path to JSON configuration file
@@ -68,21 +60,24 @@ class VertexClient:
         self.project_id = project_id
         self.default_region = default_region
         self.models: Dict[str, VertexModelConfig] = {}
-        self.endpoints: Dict[str, aiplatform.Endpoint] = {}
+        self.clients: Dict[str, openai.OpenAI] = {}
         self.connected = False
 
         # Load configuration
         self.config = self._load_configuration(config_path, config_dict)
         self._apply_global_config()
 
+        # Get default credentials
+        self.creds, self.project_id = google.auth.default()
+
         if auto_initialize:
-            self._initialize_vertex_ai()
+            self._initialize_auth()
             self._load_models()
 
     def _load_configuration(
         self, config_path: Optional[str], config_dict: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """Load multimodal configuration from file or dictionary"""
+        """Load configuration from file or dictionary"""
         if config_dict:
             return config_dict
 
@@ -103,18 +98,19 @@ class VertexClient:
         if "default_region" in vertex_config:
             self.default_region = vertex_config["default_region"]
 
-    def _initialize_vertex_ai(self):
-        """Initialize Vertex AI connection"""
+    def _initialize_auth(self):
+        """Initialize authentication"""
         try:
-            aiplatform.init(project=self.project_id, location=self.default_region)
+            auth_req = google.auth.transport.requests.Request()
+            self.creds.refresh(auth_req)
             self.connected = True
-            logger.info(f"Vertex AI initialized for multimodal inputs")
+            logger.info("Authentication initialized successfully")
         except Exception as e:
-            logger.error(f"Error during initialization: {e}")
+            logger.error(f"Error during authentication: {e}")
             raise
 
     def _load_models(self):
-        """Load multimodal models and their endpoints"""
+        """Load models and create OpenAI clients"""
         models_config = self.config.get("models", {})
 
         for model_id, model_config in models_config.items():
@@ -126,131 +122,39 @@ class VertexClient:
                 if not vertex_model.enabled:
                     continue
 
-                # Build full endpoint name for dedicated endpoints
-                if vertex_model.endpoint_id.startswith("projects/"):
-                    # endpoint_id is already a full resource name
-                    endpoint_name = vertex_model.endpoint_id
-                else:
-                    # Build full endpoint name
-                    endpoint_name = f"projects/{self.project_id}/locations/{vertex_model.region}/endpoints/{vertex_model.endpoint_id}"
-                endpoint = aiplatform.Endpoint(
-                    endpoint_name=endpoint_name,
-                    project=self.project_id,
-                    location=vertex_model.region,
+                # Build endpoint name
+                endpoint_name = f"projects/{self.project_id}/locations/{vertex_model.region}/endpoints/{vertex_model.endpoint_id}"
+                base_url = f"https://{vertex_model.region}-aiplatform.googleapis.com/v1beta1/{endpoint_name}"
+
+                # Create OpenAI client for this model
+                client = openai.OpenAI(
+                    base_url=base_url,
+                    api_key=self.creds.token,
                 )
 
                 self.models[model_id] = vertex_model
-                self.endpoints[model_id] = endpoint
+                self.clients[model_id] = client
 
                 logger.info(
-                    f"Multimodal model {model_id} loaded with endpoint: {endpoint_name}"
+                    f"Model {model_id} loaded with endpoint: {vertex_model.endpoint_id}"
                 )
 
             except Exception as e:
                 logger.error(f"Error loading model {model_id}: {e}")
                 raise
 
-    def _encode_image(self, image_input: Union[str, bytes]) -> str:
-        """
-        Encode image to base64 string
-
-        Args:
-            image_input: File path (str) or binary data (bytes)
-
-        Returns:
-            str: Base64 encoded image
-        """
-        if isinstance(image_input, str):
-            # File path
-            with open(image_input, "rb") as f:
-                return base64.b64encode(f.read()).decode("utf-8")
-        elif isinstance(image_input, bytes):
-            # Binary data
-            return base64.b64encode(image_input).decode("utf-8")
-        else:
-            raise ValueError(
-                "image_input must be a file path (str) or binary data (bytes)"
-            )
-
-    def _get_image_mime_type(self, image_path: str) -> str:
-        """Determine MIME type of an image based on file extension"""
-        extension = Path(image_path).suffix.lower()
-        mime_types = {
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".webp": "image/webp",
-            ".heic": "image/heic",
-            ".heif": "image/heif",
-        }
-        return mime_types.get(extension, "image/jpeg")
-
-    def _build_message_parts(
-        self, text: str, images: Optional[List[Union[str, bytes]]] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Build message parts for multimodal content
-
-        Args:
-            text: Text content
-            images: List of images (file paths or binary data)
-
-        Returns:
-            List of message parts
-        """
-        parts = []
-
-        # Add images first
-        if images:
-            for i, image in enumerate(images):
-                try:
-                    # Encode image
-                    image_base64 = self._encode_image(image)
-
-                    # Determine MIME type
-                    if isinstance(image, str):
-                        mime_type = self._get_image_mime_type(image)
-                    else:
-                        mime_type = "image/jpeg"  # Default for binary data
-
-                    # Add to parts list
-                    parts.append(
-                        {
-                            "inline_data": {
-                                "mime_type": mime_type,
-                                "data": image_base64,
-                            }
-                        }
-                    )
-
-                except Exception as e:
-                    logger.error(f"Error processing image {i}: {e}")
-                    continue
-
-        # Add text content
-        if text and text.strip():
-            parts.append({"text": text})
-
-        return parts
-
     def predict(
         self,
-        text_prompt: str,
-        conversation_context: Optional[List[ConversationContext]] = None,
-        images: Optional[List[Union[str, bytes]]] = None,
+        conversation_history: List[ChatMessage],
         model_id: Optional[str] = None,
-        system_instruction: Optional[str] = None,
         **kwargs,
     ) -> Optional[Dict[str, Any]]:
         """
-        Multimodal prediction with text and images as input
+        Make a prediction using conversation history
 
         Args:
-            text_prompt: Text prompt for the current message
-            conversation_context: Formatted conversation context from main.py
-            images: List of images for the current message (file paths or binary data)
+            conversation_history: List of chat messages in OpenAI format
             model_id: Model ID to use (uses first available if None)
-            system_instruction: Custom system instruction
             **kwargs: Additional parameters (max_tokens, temperature, etc.)
 
         Returns:
@@ -270,154 +174,60 @@ class VertexClient:
             return None
 
         model_config = self.models[target_model_id]
-        endpoint = self.endpoints[target_model_id]
+        client = self.clients[target_model_id]
 
-        # Validate image support
-        if not model_config.supports_images and images:
-            logger.error(f"Model {target_model_id} does not support images")
-            return None
+        # Refresh token if needed
+        if not self.creds.valid:
+            auth_req = google.auth.transport.requests.Request()
+            self.creds.refresh(auth_req)
+            client.api_key = self.creds.token
 
         try:
-            # Prepare system instruction
-            sys_instruction = system_instruction or model_config.system_instruction
+            # Prepare messages
+            messages = conversation_history.copy()
+
+            # Add system instruction at the beginning if provided
+            if model_config.system_instruction:
+                sys_msg = model_config.system_instruction
+                messages.insert(0, {"role": "system", "content": sys_msg})
 
             # Generation parameters
             generation_params = {
-                "max_output_tokens": kwargs.get("max_tokens", model_config.max_tokens),
+                "model": model_config.openai_model_name,
+                "messages": messages,
                 "temperature": kwargs.get("temperature", model_config.temperature),
-                "top_p": kwargs.get("top_p", 1.0),
-                "top_k": kwargs.get("top_k", 40),
+                "max_tokens": kwargs.get("max_tokens", model_config.max_tokens),
             }
 
-            # Build full prompt with conversation context
-            full_prompt = ""
-            if sys_instruction:
-                full_prompt += f"System: {sys_instruction}\n\n"
+            logger.info(f"Making prediction with {len(messages)} messages")
 
-            if conversation_context:
-                for context in conversation_context:
-                    if context["role"] == "user":
-                        full_prompt += f"{context['content']}\n\n"
-                    elif context["role"] == "assistant":
-                        full_prompt += f"{context['content']}\n\n"
-                    elif context["role"] == "upload":
-                        full_prompt += f"{context['content']}\n\n"
-                    else:
-                        full_prompt += f"{context['content']}\n\n"
+            # Make prediction
+            response = client.chat.completions.create(**generation_params)
 
-            # Add the current user message
-            full_prompt += text_prompt
-
-            # Build request based on model type
-            if model_config.supports_images and images:
-                # Multimodal model - use content/parts structure
-                message_parts = self._build_message_parts(full_prompt, images)
-
-                # Check image count limit
-                image_count = len(
-                    [part for part in message_parts if "inline_data" in part]
-                )
-                if image_count > model_config.max_images_per_request:
-                    logger.warning(
-                        f"Too many images ({image_count}), limit: {model_config.max_images_per_request}"
-                    )
-                    # Keep text and first N images
-                    text_parts = [part for part in message_parts if "text" in part]
-                    image_parts = [
-                        part for part in message_parts if "inline_data" in part
-                    ]
-                    message_parts = (
-                        text_parts + image_parts[: model_config.max_images_per_request]
-                    )
-
-                # Build multimodal request
-                request = {
-                    "contents": [{"role": "user", "parts": message_parts}],
-                    "generation_config": generation_params,
-                    "safety_settings": [
-                        {
-                            "category": "HARM_CATEGORY_HARASSMENT",
-                            "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                        },
-                        {
-                            "category": "HARM_CATEGORY_HATE_SPEECH",
-                            "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                        },
-                        {
-                            "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                            "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                        },
-                        {
-                            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                            "threshold": "BLOCK_MEDIUM_AND_ABOVE",
-                        },
-                    ],
-                }
-
-                response = endpoint.predict(instances=[request])
-
-                logger.info(
-                    f"Multimodal prediction: {len(message_parts)} parts ({image_count} images)"
-                )
-
-            else:
-                # Text-only model - use simple prompt structure
-                logger.info(f"Text prediction for model {target_model_id}")
-                logger.info(f"Full prompt: {full_prompt}")
-                logger.info(f"Generation params: {generation_params}")
-                # Merge generation params with full prompt
-                full_prompt = f"{full_prompt}\n\n{generation_params}"
-                # instances = [{"prompt": full_prompt}]
-                try:
-                    response = endpoint.predict({"prompt": full_prompt})
-                except Exception as e:
-                    logger.error(f"Error during text prediction: {json.dumps(e)}")
-                    return {
-                        "prediction": None,
-                        "generated_text": None,
-                        "model_id": target_model_id,
-                        "error": str(e),
-                        "success": False,
-                        "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
-                    }
-
-            # Process response
-            prediction = response.predictions[0] if response.predictions else None
-
-            # Extract the generated text
+            # Extract generated text
             generated_text = None
-            if prediction:
-                if isinstance(prediction, dict):
-                    # Try different possible response formats
-                    generated_text = (
-                        prediction.get("content")
-                        or prediction.get("text")
-                        or prediction.get("generated_text")
-                        or prediction.get("candidates", [{}])[0]
-                        .get("content", {})
-                        .get("parts", [{}])[0]
-                        .get("text")
-                    )
-                else:
-                    generated_text = str(prediction)
+            if response.choices:
+                generated_text = response.choices[0].message.content
+            else:
+                raise Exception("No choices returned from model")
 
             return {
-                "prediction": prediction,
+                "prediction": (
+                    response.model_dump()
+                    if hasattr(response, "model_dump")
+                    else dict(response)
+                ),
                 "generated_text": generated_text,
                 "model_id": target_model_id,
                 "model_type": model_config.model_type,
-                "input_type": self._determine_input_type(text_prompt, images),
-                "images_count": len(images) if images else 0,
-                "text_prompt": text_prompt,
-                "context_length": (
-                    len(conversation_context) if conversation_context else 0
-                ),
+                "input_type": "chat_messages",
+                "messages_count": len(messages),
                 "success": True,
                 "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
             }
 
         except Exception as e:
-            logger.error(f"Error during multimodal prediction: {e}")
+            logger.error(f"Error during prediction: {e}")
             return {
                 "prediction": None,
                 "generated_text": None,
@@ -427,25 +237,47 @@ class VertexClient:
                 "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
             }
 
-    def _determine_input_type(self, text: str, images: Optional[List]) -> str:
-        """Determine the type of input used for the prediction"""
-        has_text = bool(text and text.strip())
-        has_images = bool(images and len(images) > 0)
-
-        if has_text and has_images:
-            return "text_and_images" if len(images) == 1 else "text_and_multiple_images"
-        elif has_text:
-            return "text"
-        elif has_images:
-            return "images"
-        return "unknown"
-
     def health_check(self) -> Dict[str, Any]:
         """Check if the client is healthy"""
-        return {
-            "status": "healthy" if self.connected else "unhealthy",
+        health_status = {
+            "status": "unknown",
             "connected": self.connected,
+            "project_id": self.project_id,
+            "region": self.default_region,
+            "models_loaded": len(self.models),
+            "error": None,
         }
+
+        if not self.connected:
+            health_status["status"] = "unhealthy"
+            health_status["error"] = "Not connected"
+            return health_status
+
+        # Test with first available model
+        available_models = list(self.models.keys())
+        if not available_models:
+            health_status["status"] = "unhealthy"
+            health_status["error"] = "No models available"
+            return health_status
+
+        try:
+            # Test connection with a simple message
+            test_messages = [{"role": "user", "content": "Test connection"}]
+            result = self.predict(test_messages, max_tokens=10)
+
+            if result and result.get("success"):
+                health_status["status"] = "healthy"
+            else:
+                health_status["status"] = "unhealthy"
+                health_status["error"] = (
+                    result.get("error", "Unknown error") if result else "No response"
+                )
+
+        except Exception as e:
+            health_status["status"] = "unhealthy"
+            health_status["error"] = str(e)
+
+        return health_status
 
     def get_model_info(self, model_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -464,12 +296,12 @@ class VertexClient:
         return {
             "model_id": model_config.model_id,
             "model_type": model_config.model_type,
-            "supports_images": model_config.supports_images,
-            "max_images_per_request": model_config.max_images_per_request,
+            "openai_model_name": model_config.openai_model_name,
             "max_tokens": model_config.max_tokens,
             "temperature": model_config.temperature,
             "enabled": model_config.enabled,
             "region": model_config.region,
+            "endpoint_id": model_config.endpoint_id,
         }
 
     def list_models(self) -> List[str]:

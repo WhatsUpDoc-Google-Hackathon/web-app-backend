@@ -1,6 +1,6 @@
 from enum import Enum
 from typing_extensions import TypedDict
-from typing import Optional, List
+from typing import Optional, List, Union, Dict
 
 
 class WebSocketData(TypedDict):
@@ -11,6 +11,20 @@ class WebSocketData(TypedDict):
 class ConversationContext(TypedDict):
     role: str
     content: str
+
+
+# New OpenAI-style conversation structure
+class ContentPart(TypedDict):
+    type: str  # "text" or "image_url"
+    text: Optional[str]  # For text content
+    image_url: Optional[Dict[str, str]]  # For image content
+
+
+class ChatMessage(TypedDict):
+    role: str  # "user" or "assistant"
+    content: Union[
+        str, List[ContentPart]
+    ]  # Can be simple string or list of content parts
 
 
 class MessageSender(Enum):
