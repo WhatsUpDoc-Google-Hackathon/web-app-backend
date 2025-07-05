@@ -262,7 +262,7 @@ class VertexClient:
             }
 
     def generate_report(
-        self, conversation_history: List[ChatMessage], model_id: str
+        self, conversation_history: List[ChatMessage]
     ) -> Dict[str, Any]:
         """
         Generate a report for a conversation
