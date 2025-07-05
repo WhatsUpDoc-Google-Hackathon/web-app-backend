@@ -201,6 +201,9 @@ class VertexClient:
             }
 
             logger.info(f"Making prediction with {len(messages)} messages")
+            for message in messages:
+                if message.content:
+                    logger.info(f"Message: {message.content}")
 
             # Make prediction
             response = client.chat.completions.create(**generation_params)
