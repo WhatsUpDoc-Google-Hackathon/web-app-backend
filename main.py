@@ -23,6 +23,7 @@ from utils.custom_types import (
     ConversationMessage,
     DocumentMessage,
 )
+from utils.md_to_pdf import convert_markdown_to_pdf
 from utils.redis_client import RedisClient
 from utils.file_handler import FileHandler
 from utils.context_builder import format_conversation_context
@@ -144,23 +145,90 @@ async def websocket_endpoint(websocket: WebSocket):
                 conversation_context = build_conversation_context(session_id)
                 ctx = format_conversation_context(conversation_context)
                 ai_result = ai_client.predict(ctx)
+                ai_content = ai_result.get("generated_text") if ai_result else ""
+
+                # Detect special tokens
+                trigger_report = False
+                if ai_content:
+                    if "<<END_OF_CONVERSTATION>>" in ai_content:
+                        ai_content = ai_content.replace(
+                            "<<END_OF_CONVERSTATION>>", ""
+                        ).strip()
+                        trigger_report = True
+                        logger.info(
+                            f"End of conversation token detected for session {session_id}"
+                        )
+                    if "<<EMERGENCY>>" in ai_content:
+                        ai_content = ai_content.replace("<<EMERGENCY>>", "").strip()
+                        trigger_report = True
+                        logger.info(
+                            f"Emergency token detected for session {session_id}"
+                        )
+
                 ai_response: ModelResponse = {
                     "type": "text",
                     "content": (
-                        ai_result.get("generated_text")
-                        if ai_result
-                        else "AI error" if ai_result.get("error") else "AI error"
+                        ai_content
+                        if ai_content
+                        else (
+                            "AI error"
+                            if ai_result and ai_result.get("error")
+                            else "AI error"
+                        )
                     ),
                     "meta": {
-                        "source": ai_result.get("model_id", "unknown"),
-                        "timestamp": ai_result.get(
-                            "timestamp", datetime.datetime.utcnow().isoformat() + "Z"
+                        "source": (
+                            ai_result.get("model_id", "unknown")
+                            if ai_result
+                            else "unknown"
+                        ),
+                        "timestamp": (
+                            ai_result.get(
+                                "timestamp",
+                                datetime.datetime.utcnow().isoformat() + "Z",
+                            )
+                            if ai_result
+                            else datetime.datetime.utcnow().isoformat() + "Z"
                         ),
                         "success": (
                             ai_result.get("success", False) if ai_result else False
                         ),
                     },
                 }
+
+                # Generate report if stopping token detected
+                if trigger_report:
+                    logger.info(
+                        f"Generating report for session {session_id} due to stopping token"
+                    )
+                    try:
+                        conversation_context = build_conversation_context(session_id)
+                        report = ai_client.generate_report(conversation_context)
+                        # Convert report from Markdown to PDF
+                        report_pdf = convert_markdown_to_pdf(
+                            report, f"{session_id}_report.pdf"
+                        )
+                        # Upload report to GCP Storage
+                        report_pdf_url = await file_handler.upload_to_gcp_storage(
+                            file_data=report_pdf,
+                            filename=f"{session_id}_report.pdf",
+                            session_id=session_id,
+                            user_id=user_id,
+                        )
+                        if db_client:
+                            db_client.save_report(
+                                user_id,
+                                session_id,
+                                "HEALTHY",
+                                datetime.datetime.utcnow().isoformat() + "Z",
+                                report_pdf_url,
+                                "HEALTHY",
+                            )
+                        logger.info(
+                            f"Report generated successfully for session {session_id}"
+                        )
+                    except Exception as e:
+                        logger.error(f"Error generating report on stopping token: {e}")
             else:
                 # Create a mock AI response for testing
                 ai_response: ModelResponse = {
@@ -182,24 +250,39 @@ async def websocket_endpoint(websocket: WebSocket):
             logger.info(f"Sent response to {user_id}")
 
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for user {user_id}, session {session_id}")
-        # On disconnect, trigger final report generation
-        conversation_context = build_conversation_context(session_id)
-        print(
-            f"Session {session_id} ended with {len(conversation_context['conversation'])} messages"
+        logger.info(
+            f"WebSocket disconnected normally for user {user_id}, session {session_id}"
         )
-        # report = ai_client.generate_report(conversation_context)
-        # Convert report from Markdown to PDF
-        # report_pdf = convert_markdown_to_pdf(report, "report.pdf")
-        # Upload report to GCP Storage
-        # report_pdf_url = await file_handler.upload_to_gcp_storage(
-        #     file_data=report_pdf,
-        #     filename=f"{session_id}_report.pdf",
-        #     session_id=session_id,
-        #     user_id=user_id,
-        # )
-        # db_client.save_report(session_id, report)
-        print("WebSocket disconnected")
+        # On normal disconnect, trigger final report generation
+        try:
+            if ai_client:
+                conversation_context = build_conversation_context(session_id)
+                logger.info(
+                    f"Session {session_id} ended with {len(conversation_context['conversation'])} messages"
+                )
+                # TODO: Create generate_report method in ai_client
+                report = ai_client.generate_report(conversation_context)
+                # Convert report from Markdown to PDF
+                report_pdf = convert_markdown_to_pdf(report, "report.pdf")
+                # Upload report to GCP Storage
+                report_pdf_url = await file_handler.upload_to_gcp_storage(
+                    file_data=report_pdf,
+                    filename=f"{session_id}_report.pdf",
+                    session_id=session_id,
+                    user_id=user_id,
+                )
+                if db_client:
+                    # Adapt the save_report call with the right arguments
+                    db_client.save_report(session_id, report)
+                logger.info(
+                    f"Report generated on normal disconnect for session {session_id}"
+                )
+        except Exception as e:
+            logger.error(f"Error generating report on disconnect: {e}")
+    except Exception as e:
+        # Exception in WebSocket handling - no report generation
+        logger.error(f"WebSocket error for user {user_id}, session {session_id}: {e}")
+        logger.info("No report generated due to exception")
 
 
 @app.get("/cors")

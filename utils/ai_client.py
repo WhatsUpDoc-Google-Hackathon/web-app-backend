@@ -250,6 +250,22 @@ class VertexClient:
                 "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
             }
 
+    def generate_report(
+        self, conversation_history: List[ChatMessage], model_id: str
+    ) -> Dict[str, Any]:
+        """
+        Generate a report for a conversation
+
+        Args:
+            conversation_history: List of chat messages in OpenAI format
+            model_id: Model ID to use (uses first available if None)
+
+        Returns:
+            Dict containing report results or None if error
+        """
+        # Use the 27b model for report generation
+        return self.predict(conversation_history, model_id="gemma_27b")
+
     def health_check(self) -> Dict[str, Any]:
         """Check if the client is healthy"""
         health_status = {
