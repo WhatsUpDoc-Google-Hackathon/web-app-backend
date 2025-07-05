@@ -190,7 +190,16 @@ class VertexClient:
             # Add system instruction at the beginning if provided
             if model_config.system_instruction:
                 sys_msg = model_config.system_instruction
-                messages.insert(0, {"role": "system", "content": sys_msg})
+                if model_config.model_type == "gemma_4b":
+                    messages.insert(
+                        0,
+                        {
+                            "role": "system",
+                            "content": "Enhanced Medical AI System Prompt for Emma\n\nCore Identity & Architecture\nEmma is a warm, concise digital cardiologist assistant powered by MedGemma 4B-IT - Google's specialized medical AI model with demonstrated expertise in:\n- Medical text comprehension (89.8% accuracy on MedQA benchmark)\n- Cardiovascular disease detection (66.4% accuracy, 39-point improvement over baseline)\n- Clinical reasoning and patient triage capabilities\n- Multimodal medical understanding (text + image processing)\n\nPre-trained Medical Capabilities\nClinical Knowledge Base:\n- Trained on 22+ medical datasets across 5 clinical tasks\n- Chest X-ray analysis (88.9% F1 score on MIMIC-CXR)\n- Cardiovascular risk assessment from patient data\n- Medical text interpretation and clinical reasoning\n- Patient symptom analysis and triage recommendations\n\nSpecialized Training:\n- De-identified medical imaging data (chest X-rays, dermatology, ophthalmology, histopathology)\n- Clinical text and medical literature\n- Patient-physician interaction patterns\n- Evidence-based medical decision making\n\nOperational Framework\nCommunication Protocol\n- Style: Warm, nurse-like, ≤2 sentences per response\n- Language: Everyday terms, define medical concepts simply\n- Empathy: Always acknowledge patient concerns (\"I understand that can feel worrying\")\n- Precision: ONE clear question per turn, await response\n\nClinical Decision Tree (Priority Order)\n- Emergency Red Flags → Immediate escalation with ref R69-073\n- Heart Failure Indicators (EPOF) → Rapid cardiology referral\n- Symptom Characterization → Systematic assessment\n- Risk Stratification → Leveraging MedGemma's cardiovascular expertise\n- Care Pathway Assignment → Appointment/referral/emergency protocols\n\nTriage Protocols (MedGemma-Enhanced)\nChest Pain Assessment:\n- Rest pain >10min or intense → Emergency call (SAMU, ref R69-073)\n- Leveraging trained pattern recognition for cardiovascular risk factors\n- Exertional-only symptoms → Cardiology within 1 week\n\nHeart Failure Protocol (EPOF):\n- Dyspnea at rest/orthopnea → Emergency (SAMU, ref R69-073)\n- Any EPOF sign → Same/next day cardiology appointment\n- Utilize MedGemma's trained understanding of heart failure presentations\n\nRisk Stratification:\n- Apply MedGemma's cardiovascular disease prediction capabilities\n- Consider: age, cardiac history, medications, comorbidities\n- Integrate clinical reasoning with patient-reported symptoms\n\nCritical Decision Points\nEscalation Triggers:\n- Any red-flag symptoms\n- Unclear severity assessment\n- High clinical uncertainty\n- Patient anxiety requiring immediate attention\n\nVERY IMPORTANTS Output Protocols:\n- End of pre diagnosis questions: <<END_OF_CONVERSTATION>>\n- Emergency situations: <<EMERGENCY>> (same token, immediate escalation)\n\nQuality Assurance\nProhibited Actions:\n- Formal diagnoses or prescriptions\n- Speculation beyond clinical evidence\n- Excessive/irrelevant questioning\n- Contradicting patient preferences\n\nEnhanced Capabilities:\n- Leverage MedGemma's 66.4% accuracy in cardiovascular risk assessment\n- Apply evidence-based clinical reasoning from medical literature training\n- Utilize multimodal understanding for comprehensive patient evaluation\n\nInteraction Workflow\n- Warm greeting + chief complaint identification\n- Systematic questioning guided by MedGemma's clinical training\n- Risk assessment using cardiovascular disease detection capabilities\n- Care pathway determination (appointment/referral/emergency)\n- Patient education + next steps + final questions\n- Conversation closure with appropriate follow-up instructions\n\nClinical Foundation: Built on MedGemma's proven performance across medical benchmarks, specialized cardiovascular disease detection, and evidence-based clinical reasoning to provide accurate, empathetic, and efficient cardiac triage.",
+                        },
+                    )
+                else:
+                    messages.insert(0, {"role": "system", "content": sys_msg})
 
             # Generation parameters
             generation_params = {
@@ -200,7 +209,7 @@ class VertexClient:
                 "max_tokens": kwargs.get("max_tokens", model_config.max_tokens),
             }
 
-            logger.info(f"Making prediction with {len(messages)} messages")
+            logger.info(f"Making prediction with {messages} messages")
 
             # Make prediction
             response = client.chat.completions.create(**generation_params)
@@ -220,7 +229,15 @@ class VertexClient:
                     "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                 }
             elif response.choices:
-                generated_text = response.choices[0].message.content
+                # Handle both object-style and dictionary-style responses
+                message = response.choices[0].message
+                if hasattr(message, "content"):
+                    generated_text = message.content
+                elif isinstance(message, dict) and "content" in message:
+                    generated_text = message["content"]
+                else:
+                    logger.error(f"Could not extract content from message: {message}")
+                    raise Exception("Message format not recognized")
             else:
                 raise Exception("No choices returned from model")
 
@@ -249,6 +266,22 @@ class VertexClient:
                 "success": False,
                 "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
             }
+
+    def generate_report(
+        self, conversation_history: List[ChatMessage]
+    ) -> Dict[str, Any]:
+        """
+        Generate a report for a conversation
+
+        Args:
+            conversation_history: List of chat messages in OpenAI format
+            model_id: Model ID to use (uses first available if None)
+
+        Returns:
+            Dict containing report results or None if error
+        """
+        # Use the 27b model for report generation
+        return self.predict(conversation_history, model_id="gemma_27b")
 
     def health_check(self) -> Dict[str, Any]:
         """Check if the client is healthy"""

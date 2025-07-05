@@ -1,0 +1,426 @@
+{
+  "test_session": {
+    "timestamp": "2025-07-05T15:16:43.813650Z",
+    "total_tests": 7
+  },
+  "results": {
+    "initialization": {
+      "status": "success",
+      "error": null
+    },
+    "health_check": {
+      "status": "healthy",
+      "connected": true,
+      "project_id": "gemma-hcls25par-724",
+      "region": "europe-west4",
+      "models_loaded": 2,
+      "error": null
+    },
+    "model_info": {
+      "models": [
+        "gemma_4b",
+        "gemma_27b"
+      ],
+      "details": {
+        "gemma_4b": {
+          "model_id": "gemma_4b",
+          "model_type": "google_medgemma-4b-it-mg-one-click-deploy",
+          "openai_model_name": "gemma-4b-it",
+          "max_tokens": 1000,
+          "temperature": 0.0,
+          "enabled": true,
+          "region": "europe-west4",
+          "endpoint_id": "6516411792665608192"
+        },
+        "gemma_27b": {
+          "model_id": "gemma_27b",
+          "model_type": "google_medgemma-27b-text-it-mg-one-click-deploy",
+          "openai_model_name": "gemma-4b-it",
+          "max_tokens": 2000,
+          "temperature": 0.0,
+          "enabled": true,
+          "region": "europe-west4",
+          "endpoint_id": "108633947847524352"
+        }
+      },
+      "status": "success"
+    },
+    "simple_prediction": {
+      "status": "success",
+      "response": "Hello! I understand you're here to help me understand your symptoms. I'm here to help you through this process.\n\nFirst, can you describe the main symptom you're experiencing?\n",
+      "model_id": "gemma_4b",
+      "full_result": {
+        "prediction": {
+          "id": "chatcmpl-1906d5eb-a6eb-4d20-a31e-89bd21ea3075",
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "Hello! I understand you're here to help me understand your symptoms. I'm here to help you through this process.\n\nFirst, can you describe the main symptom you're experiencing?\n",
+                "refusal": null,
+                "role": "assistant",
+                "annotations": null,
+                "audio": null,
+                "function_call": null,
+                "tool_calls": [],
+                "reasoning_content": null
+              },
+              "stop_reason": 106
+            }
+          ],
+          "created": 1751728599,
+          "model": "gemma-4b-it",
+          "object": "chat.completion",
+          "service_tier": null,
+          "system_fingerprint": null,
+          "usage": {
+            "completion_tokens": 42,
+            "prompt_tokens": 272,
+            "total_tokens": 314,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "prompt_logprobs": null
+        },
+        "generated_text": "Hello! I understand you're here to help me understand your symptoms. I'm here to help you through this process.\n\nFirst, can you describe the main symptom you're experiencing?\n",
+        "model_id": "gemma_4b",
+        "model_type": "google_medgemma-4b-it-mg-one-click-deploy",
+        "input_type": "chat_messages",
+        "messages_count": 2,
+        "success": true,
+        "timestamp": "2025-07-05T15:16:39.496340Z"
+      }
+    },
+    "conversation_flow": {
+      "status": "success",
+      "response": "Okay, I hear you. It's understandable to feel anxious about potentially forgetting what to say and embarrassing yourself. Have you experienced similar situations before?\n",
+      "messages_count": 4,
+      "full_result": {
+        "prediction": {
+          "id": "chatcmpl-ef1ca40a-c75c-4ff0-8f68-b21a786f1f3e",
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "Okay, I hear you. It's understandable to feel anxious about potentially forgetting what to say and embarrassing yourself. Have you experienced similar situations before?\n",
+                "refusal": null,
+                "role": "assistant",
+                "annotations": null,
+                "audio": null,
+                "function_call": null,
+                "tool_calls": [],
+                "reasoning_content": null
+              },
+              "stop_reason": 106
+            }
+          ],
+          "created": 1751728599,
+          "model": "gemma-4b-it",
+          "object": "chat.completion",
+          "service_tier": null,
+          "system_fingerprint": null,
+          "usage": {
+            "completion_tokens": 32,
+            "prompt_tokens": 321,
+            "total_tokens": 353,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "prompt_logprobs": null
+        },
+        "generated_text": "Okay, I hear you. It's understandable to feel anxious about potentially forgetting what to say and embarrassing yourself. Have you experienced similar situations before?\n",
+        "model_id": "gemma_4b",
+        "model_type": "google_medgemma-4b-it-mg-one-click-deploy",
+        "input_type": "chat_messages",
+        "messages_count": 4,
+        "success": true,
+        "timestamp": "2025-07-05T15:16:40.025656Z"
+      }
+    },
+    "edge_cases": {
+      "empty_message": {
+        "prediction": {
+          "id": "chatcmpl-9c601287-577c-455f-823c-58041edb3c63",
+          "choices": [
+            {
+              "finish_reason": "length",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "You're right, the prompt is a bit vague. To give you the best response, I need more information.  Please tell me:\n\n*   **What is the context?** What are you trying to achieve? Are you writing a",
+                "refusal": null,
+                "role": "assistant",
+                "annotations": null,
+                "audio": null,
+                "function_call": null,
+                "tool_calls": [],
+                "reasoning_content": null
+              },
+              "stop_reason": null
+            }
+          ],
+          "created": 1751728600,
+          "model": "gemma-4b-it",
+          "object": "chat.completion",
+          "service_tier": null,
+          "system_fingerprint": null,
+          "usage": {
+            "completion_tokens": 50,
+            "prompt_tokens": 4,
+            "total_tokens": 54,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "prompt_logprobs": null
+        },
+        "generated_text": "You're right, the prompt is a bit vague. To give you the best response, I need more information.  Please tell me:\n\n*   **What is the context?** What are you trying to achieve? Are you writing a",
+        "model_id": "gemma_4b",
+        "model_type": "google_medgemma-4b-it-mg-one-click-deploy",
+        "input_type": "chat_messages",
+        "messages_count": 1,
+        "success": true,
+        "timestamp": "2025-07-05T15:16:40.742457Z"
+      },
+      "long_message": {
+        "prediction": {
+          "id": "chatcmpl-7589c742-2c07-47d7-bfa4-d877adb75c4c",
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "Okay, I'm ready to help. Let's start with a simple question.\n\nHave you been experiencing any chest pain or discomfort recently?\n",
+                "refusal": null,
+                "role": "assistant",
+                "annotations": null,
+                "audio": null,
+                "function_call": null,
+                "tool_calls": [],
+                "reasoning_content": null
+              },
+              "stop_reason": 106
+            }
+          ],
+          "created": 1751728600,
+          "model": "gemma-4b-it",
+          "object": "chat.completion",
+          "service_tier": null,
+          "system_fingerprint": null,
+          "usage": {
+            "completion_tokens": 32,
+            "prompt_tokens": 959,
+            "total_tokens": 991,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "prompt_logprobs": null
+        },
+        "generated_text": "Okay, I'm ready to help. Let's start with a simple question.\n\nHave you been experiencing any chest pain or discomfort recently?\n",
+        "model_id": "gemma_4b",
+        "model_type": "google_medgemma-4b-it-mg-one-click-deploy",
+        "input_type": "chat_messages",
+        "messages_count": 2,
+        "success": true,
+        "timestamp": "2025-07-05T15:16:41.252318Z"
+      },
+      "invalid_model": null,
+      "special_chars": {
+        "prediction": {
+          "id": "chatcmpl-10be6e49-8358-4974-8425-05377212ed56",
+          "choices": [
+            {
+              "finish_reason": "stop",
+              "index": 0,
+              "logprobs": null,
+              "message": {
+                "content": "Hello! I'm doing well, thank you for asking. I'm here to help you understand your symptoms and guide you to the best next steps.\n\nFirst, can you tell me what brings you in today?\n",
+                "refusal": null,
+                "role": "assistant",
+                "annotations": null,
+                "audio": null,
+                "function_call": null,
+                "tool_calls": [],
+                "reasoning_content": null
+              },
+              "stop_reason": 106
+            }
+          ],
+          "created": 1751728601,
+          "model": "gemma-4b-it",
+          "object": "chat.completion",
+          "service_tier": null,
+          "system_fingerprint": null,
+          "usage": {
+            "completion_tokens": 47,
+            "prompt_tokens": 281,
+            "total_tokens": 328,
+            "completion_tokens_details": null,
+            "prompt_tokens_details": null
+          },
+          "prompt_logprobs": null
+        },
+        "generated_text": "Hello! I'm doing well, thank you for asking. I'm here to help you understand your symptoms and guide you to the best next steps.\n\nFirst, can you tell me what brings you in today?\n",
+        "model_id": "gemma_4b",
+        "model_type": "google_medgemma-4b-it-mg-one-click-deploy",
+        "input_type": "chat_messages",
+        "messages_count": 2,
+        "success": true,
+        "timestamp": "2025-07-05T15:16:41.868395Z"
+      }
+    },
+    "performance": {
+      "status": "success",
+      "avg_time": 0.648344357808431,
+      "min_time": 0.6140882968902588,
+      "max_time": 0.7091758251190186,
+      "times": [
+        0.6217689514160156,
+        0.7091758251190186,
+        0.6140882968902588
+      ],
+      "results": [
+        {
+          "prediction": {
+            "id": "chatcmpl-a068eb1a-94f0-4c3e-b7ae-f717704c5664",
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "I am a conversational pre-diagnosis assistant specialized for cardiology. I am here to help you describe your symptoms and guide you step-by-step through a clinical decision tree to suggest possible next steps (e.g., see a doctor, go to",
+                  "refusal": null,
+                  "role": "assistant",
+                  "annotations": null,
+                  "audio": null,
+                  "function_call": null,
+                  "tool_calls": [],
+                  "reasoning_content": null
+                },
+                "stop_reason": null
+              }
+            ],
+            "created": 1751728601,
+            "model": "gemma-4b-it",
+            "object": "chat.completion",
+            "service_tier": null,
+            "system_fingerprint": null,
+            "usage": {
+              "completion_tokens": 50,
+              "prompt_tokens": 264,
+              "total_tokens": 314,
+              "completion_tokens_details": null,
+              "prompt_tokens_details": null
+            },
+            "prompt_logprobs": null
+          },
+          "generated_text": "I am a conversational pre-diagnosis assistant specialized for cardiology. I am here to help you describe your symptoms and guide you step-by-step through a clinical decision tree to suggest possible next steps (e.g., see a doctor, go to",
+          "model_id": "gemma_4b",
+          "model_type": "google_medgemma-4b-it-mg-one-click-deploy",
+          "input_type": "chat_messages",
+          "messages_count": 2,
+          "success": true,
+          "timestamp": "2025-07-05T15:16:42.490237Z"
+        },
+        {
+          "prediction": {
+            "id": "chatcmpl-76c1fe78-7279-4469-bf84-004da5b944bf",
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "I am a conversational pre-diagnosis assistant specialized for cardiology. I am here to help you describe your symptoms and guide you step-by-step through a clinical decision tree to suggest possible next steps (e.g., see a doctor, go to",
+                  "refusal": null,
+                  "role": "assistant",
+                  "annotations": null,
+                  "audio": null,
+                  "function_call": null,
+                  "tool_calls": [],
+                  "reasoning_content": null
+                },
+                "stop_reason": null
+              }
+            ],
+            "created": 1751728602,
+            "model": "gemma-4b-it",
+            "object": "chat.completion",
+            "service_tier": null,
+            "system_fingerprint": null,
+            "usage": {
+              "completion_tokens": 50,
+              "prompt_tokens": 264,
+              "total_tokens": 314,
+              "completion_tokens_details": null,
+              "prompt_tokens_details": null
+            },
+            "prompt_logprobs": null
+          },
+          "generated_text": "I am a conversational pre-diagnosis assistant specialized for cardiology. I am here to help you describe your symptoms and guide you step-by-step through a clinical decision tree to suggest possible next steps (e.g., see a doctor, go to",
+          "model_id": "gemma_4b",
+          "model_type": "google_medgemma-4b-it-mg-one-click-deploy",
+          "input_type": "chat_messages",
+          "messages_count": 2,
+          "success": true,
+          "timestamp": "2025-07-05T15:16:43.199446Z"
+        },
+        {
+          "prediction": {
+            "id": "chatcmpl-0fc8446e-088c-4862-a5a5-b73d7a337479",
+            "choices": [
+              {
+                "finish_reason": "length",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "I am a conversational pre-diagnosis assistant specialized for cardiology. I am here to help you describe your symptoms and guide you step-by-step through a clinical decision tree to suggest possible next steps (e.g., see a doctor, go to",
+                  "refusal": null,
+                  "role": "assistant",
+                  "annotations": null,
+                  "audio": null,
+                  "function_call": null,
+                  "tool_calls": [],
+                  "reasoning_content": null
+                },
+                "stop_reason": null
+              }
+            ],
+            "created": 1751728603,
+            "model": "gemma-4b-it",
+            "object": "chat.completion",
+            "service_tier": null,
+            "system_fingerprint": null,
+            "usage": {
+              "completion_tokens": 50,
+              "prompt_tokens": 264,
+              "total_tokens": 314,
+              "completion_tokens_details": null,
+              "prompt_tokens_details": null
+            },
+            "prompt_logprobs": null
+          },
+          "generated_text": "I am a conversational pre-diagnosis assistant specialized for cardiology. I am here to help you describe your symptoms and guide you step-by-step through a clinical decision tree to suggest possible next steps (e.g., see a doctor, go to",
+          "model_id": "gemma_4b",
+          "model_type": "google_medgemma-4b-it-mg-one-click-deploy",
+          "input_type": "chat_messages",
+          "messages_count": 2,
+          "success": true,
+          "timestamp": "2025-07-05T15:16:43.813553Z"
+        }
+      ]
+    }
+  },
+  "summary": {
+    "total_tests": 7,
+    "passed": 6,
+    "failed": 0,
+    "skipped": 0,
+    "success_rate": "85.7%"
+  }
+}
