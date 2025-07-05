@@ -220,7 +220,15 @@ class VertexClient:
                     "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                 }
             elif response.choices:
-                generated_text = response.choices[0].message.content
+                # Handle both object-style and dictionary-style responses
+                message = response.choices[0].message
+                if hasattr(message, 'content'):
+                    generated_text = message.content
+                elif isinstance(message, dict) and 'content' in message:
+                    generated_text = message['content']
+                else:
+                    logger.error(f"Could not extract content from message: {message}")
+                    raise Exception("Message format not recognized")
             else:
                 raise Exception("No choices returned from model")
 
