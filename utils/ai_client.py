@@ -205,9 +205,21 @@ class VertexClient:
             # Make prediction
             response = client.chat.completions.create(**generation_params)
 
+            logger.info(f"Response: {response}")
+
             # Extract generated text
             generated_text = None
-            if response.choices:
+            if not response:
+                logger.error("No response from model")
+                return {
+                    "prediction": None,
+                    "generated_text": None,
+                    "model_id": target_model_id,
+                    "error": "No response from model",
+                    "success": False,
+                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
+                }
+            elif response.choices:
                 generated_text = response.choices[0].message.content
             else:
                 raise Exception("No choices returned from model")
