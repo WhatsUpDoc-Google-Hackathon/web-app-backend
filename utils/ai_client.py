@@ -1,6 +1,7 @@
 import logging
 import json
 import google.auth
+from google.auth.transport import requests
 from typing import List, Dict, Any, Optional
 import openai
 import datetime
@@ -101,7 +102,7 @@ class VertexClient:
     def _initialize_auth(self):
         """Initialize authentication"""
         try:
-            auth_req = google.auth.transport.requests.Request()
+            auth_req = requests.Request()
             self.creds.refresh(auth_req)
             self.connected = True
             logger.info("Authentication initialized successfully")
