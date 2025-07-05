@@ -200,10 +200,7 @@ class VertexClient:
                 "max_tokens": kwargs.get("max_tokens", model_config.max_tokens),
             }
 
-            logger.info(f"Making prediction with {len(messages)} messages")
-            for message in messages:
-                if message.content:
-                    logger.info(f"Message: {message.content}")
+            logger.info(f"Making prediction with {messages} messages")
 
             # Make prediction
             response = client.chat.completions.create(**generation_params)
